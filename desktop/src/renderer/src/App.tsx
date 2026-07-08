@@ -6,7 +6,7 @@ import { ProcessingView } from './components/ProcessingView'
 import { ResultsView } from './components/ResultsView'
 import { DiagnosticsView } from './components/DiagnosticsView'
 import { Modal } from './components/Modal'
-import { GearIcon } from './components/icons'
+import { GearIcon, LogoMark } from './components/icons'
 import type {
   AnalysisReport,
   AnalyzeOptions,
@@ -144,7 +144,12 @@ export default function App(): JSX.Element {
   }, [])
 
   return (
-    <div className="app">
+    <div className="shell">
+      <div className="titlebar">
+        <LogoMark size={16} />
+        <span className="titlebar-title">ClipMaster</span>
+      </div>
+      <div className="app">
       <Sidebar
         view={view}
         settingsOpen={settingsOpen}
@@ -208,6 +213,7 @@ export default function App(): JSX.Element {
           {toast}
         </div>
       )}
+      </div>
     </div>
   )
 }

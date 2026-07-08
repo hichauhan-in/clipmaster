@@ -46,6 +46,33 @@ export function HomeView({
     }
   }, [weights, audioOn, visualEnabled])
 
+  const enabledCount = 1 + (audioOn ? 1 : 0) + (visualEnabled ? 1 : 0)
+
+  // The sliders show each signal's *share* (0–100). Dragging one sets its share
+  // and redistributes the remainder across the other enabled signals in their
+  // current proportion, so the handles always match the percentages and every
+  // enabled signal stays in sync. With a single signal there is nothing to
+  // balance, so its slider is pinned at 100%.
+  const setShare = (signal: 'transcript' | 'audio' | 'visual', nextPct: number): void => {
+    if (enabledCount <= 1) return
+    const share = Math.max(0, Math.min(100, nextPct))
+    const enabled: Array<'transcript' | 'audio' | 'visual'> = ['transcript']
+    if (audioOn) enabled.push('audio')
+    if (visualEnabled) enabled.push('visual')
+    const others = enabled.filter((s) => s !== signal)
+    const othersTotal = others.reduce((sum, s) => sum + pct[s], 0)
+    const remaining = 100 - share
+    setWeights((w) => {
+      const next = { ...w, [signal]: share }
+      if (othersTotal <= 0) {
+        others.forEach((s) => (next[s] = remaining / others.length))
+      } else {
+        others.forEach((s) => (next[s] = remaining * (pct[s] / othersTotal)))
+      }
+      return next
+    })
+  }
+
   const handleStart = (): void => {
     // Send the same normalized fractions the UI shows so scoring matches.
     const t = weights.transcript
@@ -120,8 +147,9 @@ export function HomeView({
             <div className="signals-head">
               <h3>Analysis signals</h3>
               <div className="sub">
-                Choose what ClipMaster weighs when scoring each moment. Percentages are each
-                enabled signal&apos;s share of the decision.
+                Choose what ClipMaster weighs when scoring each moment. Each slider is that
+                signal&apos;s share of the decision; turning one off hands its share to the
+                rest, and a lone signal is always 100%.
               </div>
             </div>
 
@@ -137,9 +165,9 @@ export function HomeView({
                     desc="What is said — the primary signal."
                     locked
                     enabled
-                    value={weights.transcript}
-                    pct={pct.transcript}
-                    onValue={(v) => setWeights((w) => ({ ...w, transcript: v }))}
+                    adjustable={enabledCount > 1}
+                    share={pct.transcript}
+                    onShare={(v) => setShare('transcript', v)}
                   />
                   <SignalRow
                     name="Audio delivery"
@@ -150,19 +178,19 @@ export function HomeView({
                     }
                     enabled={audioOn}
                     disabledReason={noAudio}
+                    adjustable={audioOn && enabledCount > 1}
                     onToggle={() => setAudioEnabled((v) => !v)}
-                    value={weights.audio}
-                    pct={pct.audio}
-                    onValue={(v) => setWeights((w) => ({ ...w, audio: v }))}
+                    share={pct.audio}
+                    onShare={(v) => setShare('audio', v)}
                   />
                   <SignalRow
                     name="On-screen visuals"
                     desc="Slides, code, demos, hardware — read by the local vision model."
                     enabled={visualEnabled}
+                    adjustable={visualEnabled && enabledCount > 1}
                     onToggle={() => setVisualEnabled((v) => !v)}
-                    value={weights.visual}
-                    pct={pct.visual}
-                    onValue={(v) => setWeights((w) => ({ ...w, visual: v }))}
+                    share={pct.visual}
+                    onShare={(v) => setShare('visual', v)}
                   />
                 </div>
 
@@ -208,9 +236,9 @@ interface SignalRowProps {
   name: string
   desc: string
   enabled: boolean
-  value: number
-  pct: number
-  onValue: (v: number) => void
+  share: number
+  onShare: (v: number) => void
+  adjustable: boolean
   locked?: boolean
   disabledReason?: boolean
   onToggle?: () => void
@@ -220,9 +248,9 @@ function SignalRow({
   name,
   desc,
   enabled,
-  value,
-  pct,
-  onValue,
+  share,
+  onShare,
+  adjustable,
   locked,
   disabledReason,
   onToggle
@@ -253,12 +281,19 @@ function SignalRow({
         min={0}
         max={100}
         step={5}
-        value={value}
-        disabled={!enabled}
-        onChange={(e) => onValue(Number(e.target.value))}
-        aria-label={`${name} weight`}
+        value={enabled ? share : 0}
+        disabled={!adjustable}
+        onChange={(e) => onShare(Number(e.target.value))}
+        aria-label={`${name} share`}
+        title={
+          adjustable
+            ? `${name} share`
+            : enabled
+              ? 'Only active signal — 100%'
+              : `${name} is off`
+        }
       />
-      <span className="signal-pct">{enabled ? `${pct}%` : 'Off'}</span>
+      <span className="signal-pct">{enabled ? `${share}%` : 'Off'}</span>
     </div>
   )
 }

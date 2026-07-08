@@ -53,6 +53,14 @@ function createWindow(): void {
     backgroundColor: '#0b0d10',
     title: 'ClipMaster',
     autoHideMenuBar: true,
+    // Themed title bar: hide the black OS frame and paint the caption strip in
+    // the app's palette, keeping native window controls via the overlay.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#12151a',
+      symbolColor: '#e6edf3',
+      height: 40
+    },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,

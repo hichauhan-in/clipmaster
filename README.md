@@ -550,7 +550,7 @@ Built incrementally; each milestone consumes the analysis artifact.
 - [x] **M3 — Desktop editor shell (Electron + React):** dark, minimal UI —
   Home (select + probe), Processing (live stage/log), Results (summary,
   timeline, chapters, clips, transcript) with per-phase action prompts
-  ("Summarise / Clean up / Make shorts / Edit / Notes & summary"). Includes a **Settings** panel
+  ("Clean up / Make shorts / Edit / Notes & summary"). Includes a **Settings** panel
   to detect/guide dependency setup, start Ollama, pick/pull models, and
   configure a log file.
 - [ ] **M4 — Cleanup renderer:** turn `cleanup_keep_spans` into a trimmed video

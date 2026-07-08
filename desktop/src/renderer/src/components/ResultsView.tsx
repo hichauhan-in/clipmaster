@@ -46,9 +46,10 @@ export function ResultsView({ report, workspace, onNotify }: Props): JSX.Element
       <div className="card">
         <h3>What would you like to do?</h3>
         <div className="actionbar">
-          <button className="action" onClick={openFolder}>
-            <div className="t">Summary &amp; report</div>
-            <div className="d">Read the full analysis, chapters and transcript below.</div>
+          <button className="action" disabled>
+            <span className="soon">soon</span>
+            <div className="t">Notes &amp; summary</div>
+            <div className="d">Study notes as Markdown — topics, subtopics and mermaid diagrams.</div>
           </button>
           <button className="action" disabled>
             <span className="soon">soon</span>
@@ -64,11 +65,6 @@ export function ResultsView({ report, workspace, onNotify }: Props): JSX.Element
             <span className="soon">soon</span>
             <div className="t">Edit</div>
             <div className="d">Add intro/outro banners and text from templates.</div>
-          </button>
-          <button className="action" disabled>
-            <span className="soon">soon</span>
-            <div className="t">Notes &amp; summary</div>
-            <div className="d">Study notes as Markdown — topics, subtopics and mermaid diagrams.</div>
           </button>
         </div>
       </div>
@@ -163,20 +159,22 @@ export function ResultsView({ report, workspace, onNotify }: Props): JSX.Element
       {report.chapters.length > 0 && (
         <div className="card">
           <h3>Chapters</h3>
-          <table className="data">
-            <thead>
-              <tr><th style={{ width: 120 }}>Time</th><th>Title</th><th>Summary</th></tr>
-            </thead>
-            <tbody>
-              {report.chapters.map((c, i) => (
-                <tr key={i}>
-                  <td className="mono">{formatTime(c.start)}–{formatTime(c.end)}</td>
-                  <td>{c.title}</td>
-                  <td style={{ color: 'var(--text-dim)' }}>{c.summary}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="table-scroll">
+            <table className="data">
+              <thead>
+                <tr><th style={{ width: 120 }}>Time</th><th>Title</th><th>Summary</th></tr>
+              </thead>
+              <tbody>
+                {report.chapters.map((c, i) => (
+                  <tr key={i}>
+                    <td className="mono">{formatTime(c.start)}–{formatTime(c.end)}</td>
+                    <td>{c.title}</td>
+                    <td style={{ color: 'var(--text-dim)' }}>{c.summary}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -184,22 +182,24 @@ export function ResultsView({ report, workspace, onNotify }: Props): JSX.Element
       {report.clip_candidates.length > 0 && (
         <div className="card">
           <h3>Suggested clips</h3>
-          <table className="data">
-            <thead>
-              <tr><th>Score</th><th>Time</th><th>Len</th><th>Title</th><th>Hook</th></tr>
-            </thead>
-            <tbody>
-              {report.clip_candidates.map((c, i) => (
-                <tr key={i}>
-                  <td><span className="score">{c.score.toFixed(2)}</span></td>
-                  <td className="mono">{formatTime(c.start)}</td>
-                  <td>{Math.round(c.end - c.start)}s</td>
-                  <td>{c.title}</td>
-                  <td style={{ color: 'var(--text-dim)' }}>{c.hook}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="table-scroll">
+            <table className="data">
+              <thead>
+                <tr><th>Score</th><th>Time</th><th>Len</th><th>Title</th><th>Hook</th></tr>
+              </thead>
+              <tbody>
+                {report.clip_candidates.map((c, i) => (
+                  <tr key={i}>
+                    <td><span className="score">{c.score.toFixed(2)}</span></td>
+                    <td className="mono">{formatTime(c.start)}</td>
+                    <td>{Math.round(c.end - c.start)}s</td>
+                    <td>{c.title}</td>
+                    <td style={{ color: 'var(--text-dim)' }}>{c.hook}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
