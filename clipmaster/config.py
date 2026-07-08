@@ -129,6 +129,17 @@ class RenderConfig(BaseModel):
     shorts_blur_background: bool = True
 
 
+class NotesConfig(BaseModel):
+    """Study-notes generation defaults."""
+
+    # Consecutive chapters are grouped into a single Markdown file so a video
+    # produces a handful of long, readable notes files instead of dozens of tiny
+    # ones. Larger = fewer, longer files.
+    chapters_per_file: int = 4
+    # When there are at most this many chapters, put everything in one notes file.
+    single_file_max_chapters: int = 6
+
+
 class LoggingConfig(BaseModel):
     level: str = "INFO"
     # Optional path to a log file or a directory (a clipmaster.log is created in
@@ -148,6 +159,7 @@ class Settings(BaseModel):
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
     clips: ClipsConfig = Field(default_factory=ClipsConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
+    notes: NotesConfig = Field(default_factory=NotesConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
     @property

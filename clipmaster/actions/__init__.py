@@ -5,7 +5,7 @@ so the CLI, the HTTP server and the desktop app can all render the same status.
 
 * :func:`build_cleanup` — a trimmed cut with silence / filler / off-topic removed.
 * :func:`build_shorts`  — vertical short-form clips from the best moments.
-* :func:`build_notes`   — Markdown study notes (topics, subtopics, mermaid).
+* :func:`build_notes`   — written Markdown study notes grouped into a few files.
 """
 
 from clipmaster.actions.cleanup import CleanupResult, build_cleanup

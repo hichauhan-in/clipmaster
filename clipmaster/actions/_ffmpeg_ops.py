@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from clipmaster.config import RenderConfig
-from clipmaster.media.ffmpeg import run_ffmpeg_progress
+from clipmaster.media.ffmpeg import ffmpeg_major_version, run_ffmpeg_progress
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
@@ -22,6 +22,32 @@ def slugify(name: str, *, fallback: str = "clip", max_len: int = 48) -> str:
     slug = _SLUG_RE.sub("-", name.lower()).strip("-")
     slug = slug[:max_len].strip("-")
     return slug or fallback
+
+
+def _filter_complex_args(
+    graph: str, dest: Path, ffmpeg_bin: str
+) -> tuple[list[str], Path | None]:
+    """Build the ffmpeg args for a large complex filtergraph.
+
+    ffmpeg 7.0 removed ``-filter_complex_script``; the generic replacement is the
+    ``-/filter_complex <file>`` file-read syntax (a ``/`` before the option name
+    tells ffmpeg to read the value from a file). Older ffmpeg predates that syntax,
+    so we choose based on the detected major version. Writing the graph to a file
+    also keeps us clear of the OS command-line length limit when there are many
+    spans. When the version can't be detected we fall back to inlining the graph,
+    which works on every ffmpeg release.
+
+    Returns the option args plus the temp script path to clean up (or ``None`` when
+    the graph was inlined).
+    """
+    major = ffmpeg_major_version(ffmpeg_bin)
+    if major is None:
+        return ["-filter_complex", graph], None
+    script_path = dest.parent / f"{dest.stem}.filter.txt"
+    script_path.write_text(graph, encoding="utf-8")
+    if major >= 7:
+        return ["-/filter_complex", str(script_path)], script_path
+    return ["-filter_complex_script", str(script_path)], script_path
 
 
 def encode_args(render: RenderConfig, *, has_audio: bool) -> list[str]:
@@ -63,9 +89,9 @@ def keep_and_concat(
 
     A single-pass ``filter_complex`` trims each span and concatenates them, so the
     output has clean, gap-free timestamps and correct A/V sync regardless of the
-    source keyframe layout. The graph is written to a script file (via
-    ``-filter_complex_script``) so an arbitrary number of spans never hits the
-    OS command-line length limit.
+    source keyframe layout. The graph is written to a script file and passed with
+    the version-appropriate option (see :func:`_filter_complex_args`) so an
+    arbitrary number of spans never hits the OS command-line length limit.
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     total = sum(max(0.0, e - s) for s, e in spans)
@@ -89,10 +115,9 @@ def keep_and_concat(
         parts.append("".join(concat_inputs) + f"concat=n={n}:v=1:a=0[outv]")
     graph = "\n".join(parts)
 
-    script_path = dest.parent / f"{dest.stem}.filter.txt"
-    script_path.write_text(graph, encoding="utf-8")
+    fc_args, script_path = _filter_complex_args(graph, dest, ffmpeg_bin)
 
-    args = ["-i", str(source), "-filter_complex_script", str(script_path), "-map", "[outv]"]
+    args = ["-i", str(source), *fc_args, "-map", "[outv]"]
     if has_audio:
         args += ["-map", "[outa]"]
     args += encode_args(render, has_audio=has_audio)
@@ -103,7 +128,8 @@ def keep_and_concat(
             on_progress(_clamp_fraction(elapsed, total))
 
     run_ffmpeg_progress(ffmpeg_bin, args, on_progress=_cb)
-    script_path.unlink(missing_ok=True)
+    if script_path is not None:
+        script_path.unlink(missing_ok=True)
     return dest
 
 

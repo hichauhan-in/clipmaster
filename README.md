@@ -282,6 +282,8 @@ passing **`--config path.yaml`**, or setting `CLIPMASTER_*` env vars.
 | `render`        | `crf`                      | `20`               | H.264 quality for cleanup/shorts (lower = better)   |
 |                 | `shorts_width` / `_height` | `1080` / `1920`    | Vertical 9:16 shorts canvas                         |
 |                 | `shorts_blur_background`   | `true`             | Letterbox over a blurred fill (vs. black bars)      |
+| `notes`         | `chapters_per_file`        | `4`                | Topics grouped per notes file (bigger = fewer files)|
+|                 | `single_file_max_chapters` | `6`                | At/below this, all notes go in one file             |
 
 Environment overrides: `CLIPMASTER_WORKSPACE`, `CLIPMASTER_OLLAMA_HOST`,
 `CLIPMASTER_LLM_MODEL`, `CLIPMASTER_WHISPER_MODEL`, `CLIPMASTER_WHISPER_DEVICE`,
@@ -577,10 +579,13 @@ Built incrementally; each milestone consumes the analysis artifact.
   Cleanup keep-spans also preserve **silent-but-active footage** — on-screen
   navigation and demos that show *how to reach* something — so those sections
   are never trimmed just because nobody is talking over them.
-- [x] **M8 — Notes & study-guide export:** generate reference notes as Markdown —
-  an index plus one file per chapter, with topics, subtopics, key points and
-  **mermaid diagrams** (a programmatic topic mindmap + per-chapter LLM diagrams).
-  Written by the local LLM, with a structural fallback when Ollama is offline;
+- [x] **M8 — Notes & study-guide export:** generate written reference notes as
+  Markdown — a study-guide index plus a handful of long, self-contained notes
+  files (consecutive topics are grouped, so you get a few thousand-line files
+  instead of dozens of stubs). The notes are proper prose you can revise from —
+  no transcript dumps and no "in the video / at 03:12" references — with
+  **mermaid diagrams** (a programmatic topic mindmap + per-topic LLM diagrams).
+  Written by the local LLM, with a reflowed fallback when Ollama is offline;
   the user picks the output folder.
 
 ---

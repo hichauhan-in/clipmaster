@@ -1,9 +1,11 @@
-"""Notes action: generate Markdown study notes from an analysed video.
+"""Notes action: generate written study notes from an analysed video.
 
-Produces a small set of Markdown files — an index/study-guide plus one file per
-chapter — with topics, subtopics, key points and (where it helps) a mermaid
-diagram. The local LLM writes the prose; when it is unavailable we still emit
-useful structural notes from the analysis so the action never fails silently.
+Produces a compact set of Markdown files — a study-guide index (``README.md``)
+plus a handful of long, self-contained notes files — that read like proper
+revision notes for interview prep or personal learning. The notes are written
+prose (not a transcript dump and with no "in the video / at 03:12" references);
+the local LLM does the writing, and when it is unavailable we still emit useful
+notes reflowed from the analysis so the action never fails silently.
 """
 
 from __future__ import annotations
@@ -17,7 +19,6 @@ from clipmaster.config import Settings
 from clipmaster.events import EventBus, Stage
 from clipmaster.logging_setup import get_logger
 from clipmaster.models import AnalysisReport, Chapter
-from clipmaster.report.builder import format_timestamp
 
 logger = get_logger("actions.notes")
 
@@ -25,10 +26,16 @@ _SLUG_RE = re.compile(r"[^a-z0-9]+")
 _MERMAID_KEYWORDS = ("flowchart", "graph", "sequencediagram", "mindmap", "classdiagram")
 
 _SYSTEM = (
-    "You are an expert study-notes writer. You convert a lecture transcript "
-    "excerpt into faithful, well-structured study notes. Respond ONLY with strict "
-    "JSON — no prose outside the JSON. Never invent facts that are not supported "
-    "by the transcript."
+    "You are an expert study-notes author. You turn a lecture transcript excerpt "
+    "into clear, well-structured written notes that someone could revise from for "
+    "an interview or to learn the topic — full sentences and proper explanations, "
+    "not a transcript and not terse fragments. Rules: (1) Write self-contained "
+    "prose that teaches the concept; define terms, explain the 'why', and add "
+    "brief examples where they help. (2) Never refer to 'the video', 'the "
+    "speaker', 'this section/lecture', 'as mentioned', or any timestamps — the "
+    "reader has no access to the source. (3) Never invent facts that the "
+    "transcript does not support. Respond ONLY with strict JSON — no prose "
+    "outside the JSON."
 )
 
 
@@ -76,19 +83,41 @@ def _clean_mermaid(raw: object) -> str:
     return body
 
 
+def _reflow_paragraphs(text: str, *, sentences_per_para: int = 4) -> list[str]:
+    """Group a run-on transcript into readable paragraphs of full sentences."""
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if len(s.strip()) > 20]
+    paragraphs: list[str] = []
+    for i in range(0, len(sentences), sentences_per_para):
+        chunk = " ".join(sentences[i : i + sentences_per_para]).strip()
+        if chunk:
+            paragraphs.append(chunk)
+    return paragraphs
+
+
 def _llm_notes(client: OllamaClient, model: str, title: str, text: str) -> dict:
     prompt = (
-        f"Chapter title: {title}\n\n"
-        f'Transcript excerpt:\n"""\n{text}\n"""\n\n'
-        "Return JSON exactly in this shape:\n"
+        f"Topic title: {title}\n\n"
+        f'Transcript excerpt to write notes from:\n"""\n{text}\n"""\n\n'
+        "Write thorough study notes for this topic and return JSON exactly in "
+        "this shape:\n"
         "{\n"
-        '  "title": "a concise, descriptive chapter title",\n'
-        '  "overview": "2-4 sentence plain-language overview",\n'
-        '  "key_points": ["short factual takeaway", "..."],\n'
-        '  "subtopics": [{"heading": "subtopic name", "points": ["detail", "..."]}],\n'
+        '  "title": "a concise, descriptive topic title",\n'
+        '  "summary": "1-2 sentence plain-language summary of the topic",\n'
+        '  "sections": [\n'
+        "    {\n"
+        '      "heading": "a sub-topic or concept name",\n'
+        '      "content": "one or more full paragraphs of written explanation in '
+        "Markdown. Teach the concept clearly: define terms, explain how and why it "
+        "works, and include short concrete examples where useful. You may use "
+        '"- " bullet lines inside the content for lists of steps or items."\n'
+        "    }\n"
+        "  ],\n"
+        '  "key_takeaways": ["a concise revision point", "..."],\n'
         '  "mermaid": "a single mermaid \'flowchart TD\' diagram of how the ideas '
         'connect, or an empty string if a diagram would not help"\n'
-        "}"
+        "}\n\n"
+        "Aim for at least two or three well-developed sections. Do not mention the "
+        "video, the speaker, or any timestamps."
     )
     data = client.chat_json(prompt, system=_SYSTEM, model=model)
     if not isinstance(data, dict):
@@ -97,13 +126,17 @@ def _llm_notes(client: OllamaClient, model: str, title: str, text: str) -> dict:
 
 
 def _fallback_notes(title: str, text: str, chapter: Chapter) -> dict:
-    """Structural notes from the analysis alone (no LLM)."""
+    """Readable notes reflowed from the analysis alone (no LLM)."""
+    paragraphs = _reflow_paragraphs(text)
     sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if len(s.strip()) > 25]
+    sections: list[dict] = []
+    if paragraphs:
+        sections.append({"heading": "Notes", "content": "\n\n".join(paragraphs)})
     return {
         "title": title,
-        "overview": chapter.summary or (sentences[0] if sentences else ""),
-        "key_points": sentences[:6],
-        "subtopics": [],
+        "summary": chapter.summary or (sentences[0] if sentences else ""),
+        "sections": sections,
+        "key_takeaways": sentences[:6],
         "mermaid": "",
     }
 
@@ -114,80 +147,103 @@ def _coerce(data: dict, title: str) -> dict:
             return [str(v).strip() for v in value if str(v).strip()]
         return []
 
-    subtopics: list[dict] = []
-    for item in data.get("subtopics") or []:
+    sections: list[dict] = []
+    for item in data.get("sections") or []:
         if isinstance(item, dict):
             heading = str(item.get("heading", "")).strip()
-            points = _str_list(item.get("points"))
-            if heading or points:
-                subtopics.append({"heading": heading or "Details", "points": points})
+            content = str(item.get("content", "")).strip()
+            if heading or content:
+                sections.append({"heading": heading or "Details", "content": content})
     return {
         "title": str(data.get("title") or title).strip() or title,
-        "overview": str(data.get("overview") or "").strip(),
-        "key_points": _str_list(data.get("key_points")),
-        "subtopics": subtopics,
+        "summary": str(data.get("summary") or data.get("overview") or "").strip(),
+        "sections": sections,
+        "key_takeaways": _str_list(data.get("key_takeaways") or data.get("key_points")),
         "mermaid": _clean_mermaid(data.get("mermaid")),
     }
 
 
-def _render_chapter_md(chapter: Chapter, notes: dict) -> str:
-    lines = [f"# {notes['title']}", ""]
-    lines.append(f"*{format_timestamp(chapter.start)} – {format_timestamp(chapter.end)}*")
-    lines.append("")
-    if notes["overview"]:
-        lines += ["## Overview", "", notes["overview"], ""]
-    if notes["key_points"]:
-        lines += ["## Key points", ""]
-        lines += [f"- {p}" for p in notes["key_points"]]
-        lines.append("")
-    for sub in notes["subtopics"]:
-        lines += [f"## {sub['heading']}", ""]
-        lines += [f"- {p}" for p in sub["points"]]
+def _render_chapter_section(notes: dict, chapter: Chapter, *, level: int = 2) -> list[str]:
+    """Render one topic's notes as Markdown lines, headed at ``level`` (## by default)."""
+    h = "#" * level
+    sub = "#" * (level + 1)
+    lines = [f"{h} {notes['title']}", ""]
+    if notes["summary"]:
+        lines += [notes["summary"], ""]
+    for section in notes["sections"]:
+        lines += [f"{sub} {section['heading']}", ""]
+        if section["content"]:
+            lines += [section["content"], ""]
+    if notes["key_takeaways"]:
+        lines += ["**Key takeaways**", ""]
+        lines += [f"- {p}" for p in notes["key_takeaways"]]
         lines.append("")
     if notes["mermaid"]:
-        lines += ["## Diagram", "", "```mermaid", notes["mermaid"], "```", ""]
+        lines += ["```mermaid", notes["mermaid"], "```", ""]
     if chapter.keywords:
-        lines += ["---", "", "*Keywords:* " + ", ".join(f"`{k}`" for k in chapter.keywords), ""]
+        lines += ["*Keywords:* " + ", ".join(f"`{k}`" for k in chapter.keywords), ""]
+    return lines
+
+
+def _render_group_md(group_title: str, items: list[tuple[Chapter, dict]]) -> str:
+    """Render a single notes file that covers a group of consecutive topics."""
+    lines = [f"# {group_title}", ""]
+    multi = len(items) > 1
+    for chapter, notes in items:
+        # In multi-topic files each topic is a level-2 section; in a single-topic
+        # file the topic title is already the H1, so start its detail at level 2 too.
+        lines += _render_chapter_section(notes, chapter, level=2)
+        if multi:
+            lines += ["---", ""]
+    # Drop a trailing separator so files don't end on a rule.
+    while lines and lines[-1] in ("", "---"):
+        lines.pop()
+    lines.append("")
     return "\n".join(lines)
 
 
 def _render_index_md(
     report: AnalysisReport,
-    entries: list[tuple[Chapter, str, str]],
+    files: list[tuple[str, str, list[str]]],
     *,
     used_llm: bool,
 ) -> str:
+    """Study-guide index: ``files`` is (filename, group_title, [topic titles])."""
     title = Path(report.source_path).stem
     lines = [f"# Study notes — {title}", ""]
-    lines.append(
-        f"*{len(entries)} chapter file(s) · source {format_timestamp(report.media.duration_s)}*"
-    )
-    lines.append("")
     if report.summary:
-        lines += ["## Summary", "", report.summary, ""]
+        lines += ["## Overview", "", report.summary, ""]
     if report.keywords:
         lines += ["## Keywords", "", ", ".join(f"`{k}`" for k in report.keywords), ""]
 
     lines += ["## Contents", ""]
-    for chapter, notes_title, filename in entries:
-        stamp = f"{format_timestamp(chapter.start)}–{format_timestamp(chapter.end)}"
-        lines.append(f"- [{notes_title}]({filename}) · {stamp}")
+    for filename, group_title, topics in files:
+        lines.append(f"- [{group_title}]({filename})")
+        if len(topics) > 1:
+            lines += [f"  - {t}" for t in topics]
     lines.append("")
 
     # Programmatic topic mindmap — reliable, no LLM needed.
     lines += ["## Topic map", "", "```mermaid", "mindmap", f"  root(({_sanitize_node(title)}))"]
-    for chapter, notes_title, _ in entries:
-        lines.append(f"    {_sanitize_node(notes_title)}")
-        for kw in chapter.keywords[:4]:
-            lines.append(f"      {_sanitize_node(kw)}")
+    for _, group_title, topics in files:
+        for topic in topics:
+            lines.append(f"    {_sanitize_node(topic)}")
     lines += ["```", ""]
     if not used_llm:
         lines += [
-            "> These notes were generated from the analysis structure only "
-            "(the local LLM was unavailable). Start Ollama and re-run for richer notes.",
+            "> These notes were reflowed from the analysis only (the local LLM was "
+            "unavailable). Start Ollama and re-run for fully written notes.",
             "",
         ]
     return "\n".join(lines)
+
+
+def _group_chapters(chapters: list[Chapter], cfg) -> list[list[Chapter]]:
+    """Split chapters into consecutive groups so we write a few long files."""
+    if len(chapters) <= max(1, cfg.single_file_max_chapters):
+        return [list(chapters)]
+    size = max(1, cfg.chapters_per_file)
+    return [chapters[i : i + size] for i in range(0, len(chapters), size)]
 
 
 def _chapters_for(report: AnalysisReport) -> list[Chapter]:
@@ -215,7 +271,11 @@ def build_notes(
     output_dir: Path,
     bus: EventBus | None = None,
 ) -> NotesResult:
-    """Generate Markdown study notes for ``report`` into ``output_dir``."""
+    """Generate written study notes for ``report`` into ``output_dir``.
+
+    Topics are written individually (LLM or offline fallback) and then grouped
+    into a few long Markdown files plus a ``README.md`` study-guide index.
+    """
     bus = bus or EventBus()
     chapters = _chapters_for(report)
     if not chapters:
@@ -235,13 +295,13 @@ def build_notes(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     n = len(chapters)
-    bus.stage_start(Stage.NOTES, f"Writing study notes for {n} chapter(s)…", chapters=n)
+    bus.stage_start(Stage.NOTES, f"Writing study notes for {n} topic(s)…", chapters=n)
 
-    entries: list[tuple[Chapter, str, str]] = []
-    files: list[Path] = []
+    # 1) Write notes for every topic (chapter) up front.
+    written: list[dict] = []
     for i, chapter in enumerate(chapters):
         text = _chapter_text(report, chapter, limit=limit)
-        title = chapter.title or f"Chapter {i + 1}"
+        title = chapter.title or f"Topic {i + 1}"
         bus.progress(Stage.NOTES, i / n, f"Notes {i + 1}/{n} · {title}")
 
         notes: dict | None = None
@@ -249,22 +309,48 @@ def build_notes(
             try:
                 notes = _coerce(_llm_notes(client, settings.llm.model, title, text), title)
                 used_llm_any = True
-            except Exception as exc:  # noqa: BLE001 - degrade to structural notes
-                logger.warning("LLM notes failed for chapter %d: %s", i, exc)
+            except Exception as exc:  # noqa: BLE001 - degrade to reflowed notes
+                logger.warning("LLM notes failed for topic %d: %s", i, exc)
                 notes = None
         if notes is None:
             notes = _coerce(_fallback_notes(title, text, chapter), title)
+        written.append(notes)
 
-        filename = f"{i + 1:02d}-{_slug(notes['title'])}.md"
-        (output_dir / filename).write_text(_render_chapter_md(chapter, notes), encoding="utf-8")
+    # 2) Group consecutive topics into a handful of long files.
+    doc_title = Path(report.source_path).stem or "Study notes"
+    groups = _group_chapters(chapters, settings.notes)
+    single_group = len(groups) == 1
+
+    files: list[Path] = []
+    index_entries: list[tuple[str, str, list[str]]] = []
+    cursor = 0
+    for part, group in enumerate(groups, start=1):
+        items = [(chapters[cursor + j], written[cursor + j]) for j in range(len(group))]
+        cursor += len(group)
+        topic_titles = [notes["title"] for _, notes in items]
+
+        if single_group:
+            group_title = doc_title
+        elif len(items) == 1:
+            group_title = f"Part {part}: {topic_titles[0]}"
+        else:
+            group_title = f"Part {part}: {topic_titles[0]} → {topic_titles[-1]}"
+
+        slug_seed = doc_title if single_group else topic_titles[0]
+        filename = f"{part:02d}-{_slug(slug_seed)}.md"
+        (output_dir / filename).write_text(
+            _render_group_md(group_title, items), encoding="utf-8"
+        )
         files.append(output_dir / filename)
-        entries.append((chapter, notes["title"], filename))
+        index_entries.append((filename, group_title, topic_titles))
 
     index = output_dir / "README.md"
-    index.write_text(_render_index_md(report, entries, used_llm=used_llm_any), encoding="utf-8")
+    index.write_text(
+        _render_index_md(report, index_entries, used_llm=used_llm_any), encoding="utf-8"
+    )
     files.insert(0, index)
 
-    how = "with the local LLM" if used_llm_any else "from the analysis structure"
+    how = "with the local LLM" if used_llm_any else "reflowed from the analysis"
     message = f"Wrote {len(files)} Markdown file(s) {how}."
     bus.stage_end(Stage.NOTES, message, output=str(output_dir))
     logger.info("Notes written to %s (%s)", output_dir, message)

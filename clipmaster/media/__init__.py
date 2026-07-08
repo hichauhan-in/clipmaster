@@ -3,6 +3,7 @@
 from clipmaster.media.chunker import extract_chunk, plan_chunks
 from clipmaster.media.ffmpeg import (
     FFmpegError,
+    ffmpeg_major_version,
     run_ffmpeg,
     run_ffmpeg_progress,
     run_ffprobe,
@@ -12,6 +13,7 @@ from clipmaster.media.silence import detect_silence, extract_audio
 
 __all__ = [
     "FFmpegError",
+    "ffmpeg_major_version",
     "run_ffmpeg",
     "run_ffmpeg_progress",
     "run_ffprobe",

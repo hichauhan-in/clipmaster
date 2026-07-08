@@ -9,6 +9,7 @@ callers can convert them into user-facing pipeline errors.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import tempfile
 from typing import Callable, Sequence
@@ -16,6 +17,8 @@ from typing import Callable, Sequence
 from clipmaster.logging_setup import get_logger
 
 logger = get_logger("media.ffmpeg")
+
+_FFMPEG_MAJOR_CACHE: dict[str, int | None] = {}
 
 
 class FFmpegError(RuntimeError):
@@ -55,6 +58,33 @@ def run_ffprobe(ffprobe_bin: str, args: Sequence[str]) -> dict:
         return json.loads(result.stdout or "{}")
     except json.JSONDecodeError as exc:
         raise FFmpegError(command, 0, f"invalid ffprobe JSON: {exc}") from exc
+
+
+def ffmpeg_major_version(ffmpeg_bin: str) -> int | None:
+    """Return the ffmpeg major version (e.g. ``6`` or ``7``), or ``None`` if unknown.
+
+    Cached per binary. Used to select between options whose spelling changed across
+    releases — notably ``-filter_complex_script``, which ffmpeg 7.0 removed in favour
+    of the generic ``-/filter_complex <file>`` file-read syntax.
+    """
+    if ffmpeg_bin in _FFMPEG_MAJOR_CACHE:
+        return _FFMPEG_MAJOR_CACHE[ffmpeg_bin]
+    version: int | None = None
+    try:
+        result = subprocess.run(
+            [ffmpeg_bin, "-hide_banner", "-version"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        first = (result.stdout or "").splitlines()[0] if result.stdout else ""
+        match = re.search(r"version\s+n?(\d+)\.", first)
+        if match:
+            version = int(match.group(1))
+    except (OSError, ValueError):
+        version = None
+    _FFMPEG_MAJOR_CACHE[ffmpeg_bin] = version
+    return version
 
 
 def run_ffmpeg(ffmpeg_bin: str, args: Sequence[str]) -> subprocess.CompletedProcess:

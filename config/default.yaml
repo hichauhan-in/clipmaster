@@ -136,6 +136,16 @@ render:
   shorts_blur_background: true
 
 # ------------------------------------------------------------------------------------
+# Study-notes generation (Notes action)
+# ------------------------------------------------------------------------------------
+notes:
+  # Consecutive chapters are grouped into one Markdown file, so a video produces
+  # a handful of long, readable notes files instead of dozens of tiny ones.
+  chapters_per_file: 4
+  # At or below this many chapters, write everything into a single notes file.
+  single_file_max_chapters: 6
+
+# ------------------------------------------------------------------------------------
 # Logging
 # ------------------------------------------------------------------------------------
 logging:
