@@ -163,6 +163,10 @@ code,
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  transition: grid-template-columns 0.18s ease;
+}
+.app.sidebar-collapsed {
+  grid-template-columns: 54px 1fr;
 }
 
 .sidebar {
@@ -173,26 +177,49 @@ code,
   overflow: hidden;
 }
 
-.sidebar .brand {
-  padding: 18px 18px 12px;
+/* Minimal sidebar header — just the collapse toggle (the brand lives in the
+   title bar, so it is not repeated here). */
+.sidebar-head {
   display: flex;
   align-items: center;
-  gap: 10px;
+  padding: 12px 12px 6px;
 }
-.sidebar .brand .logo {
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
-  background: linear-gradient(135deg, var(--accent), #a371f7);
+.collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
 }
-.sidebar .brand h1 {
-  font-size: 15px;
-  margin: 0;
-  letter-spacing: 0.2px;
+.collapse-btn svg {
+  display: block;
 }
-.sidebar .brand small {
-  color: var(--text-faint);
-  font-size: 11px;
+.collapse-btn:hover {
+  background: var(--bg-elev-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+/* Collapsed: show only the toggle (top) and the settings gear (bottom). */
+.sidebar.collapsed .nav,
+.sidebar.collapsed .section-label,
+.sidebar.collapsed .project-list {
+  display: none;
+}
+.sidebar.collapsed .sidebar-head {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+.sidebar.collapsed .sidebar-footer {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .nav {
@@ -296,6 +323,7 @@ code,
 
 /* Sidebar footer (Settings — gear icon only) */
 .sidebar-footer {
+  margin-top: auto;
   border-top: 1px solid var(--border);
   padding: 10px 12px;
   display: flex;

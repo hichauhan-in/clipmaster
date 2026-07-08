@@ -21,6 +21,7 @@ type View = 'home' | 'processing' | 'results'
 export default function App(): JSX.Element {
   const [view, setView] = useState<View>('home')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [projects, setProjects] = useState<ProjectSummary[]>([])
 
@@ -173,10 +174,12 @@ export default function App(): JSX.Element {
         <LogoMark size={16} />
         <span className="titlebar-title">ClipMaster</span>
       </div>
-      <div className="app">
+      <div className={`app ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <Sidebar
         view={view}
         settingsOpen={settingsOpen}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
         onNewAnalysis={goHome}
         onOpenSettings={() => setSettingsOpen(true)}
         health={health}

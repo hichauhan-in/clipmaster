@@ -1,10 +1,12 @@
 import type { HealthResponse, ProjectSummary } from '../types'
 import { baseName, formatTime } from '../util'
-import { GearIcon, LogoMark, TrashIcon } from './icons'
+import { GearIcon, MenuIcon, TrashIcon } from './icons'
 
 interface Props {
   view: string
   settingsOpen: boolean
+  collapsed: boolean
+  onToggleCollapse: () => void
   onNewAnalysis: () => void
   onOpenSettings: () => void
   health: HealthResponse | null
@@ -17,6 +19,8 @@ interface Props {
 export function Sidebar({
   view,
   settingsOpen,
+  collapsed,
+  onToggleCollapse,
   onNewAnalysis,
   onOpenSettings,
   health,
@@ -35,13 +39,16 @@ export function Sidebar({
   const statusClass = !health ? '' : issues === 0 ? 'ok' : 'warn'
 
   return (
-    <aside className="sidebar">
-      <div className="brand">
-        <LogoMark size={30} />
-        <div className="brand-text">
-          <h1>ClipMaster</h1>
-          <small>{health ? `v${health.version}` : 'connecting…'}</small>
-        </div>
+    <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+      <div className="sidebar-head">
+        <button
+          className="collapse-btn"
+          onClick={onToggleCollapse}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          <MenuIcon size={18} />
+        </button>
       </div>
 
       <div className="nav">

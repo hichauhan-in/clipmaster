@@ -156,3 +156,12 @@ export function CheckIcon({ size = 18, className }: IconProps): JSX.Element {
     </svg>
   )
 }
+
+/** Hamburger / collapse toggle (three lines). */
+export function MenuIcon({ size = 18, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden="true" {..._stroke}>
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  )
+}
