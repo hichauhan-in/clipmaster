@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import json
 import subprocess
-from typing import Sequence
+import tempfile
+from typing import Callable, Sequence
 
 from clipmaster.logging_setup import get_logger
 
@@ -64,3 +65,75 @@ def run_ffmpeg(ffmpeg_bin: str, args: Sequence[str]) -> subprocess.CompletedProc
     """
     command = [ffmpeg_bin, "-hide_banner", "-nostdin", "-y", *args]
     return _run(command)
+
+
+def _parse_out_time(line: str) -> float | None:
+    """Parse an ffmpeg ``-progress`` line into elapsed output seconds, if present."""
+    if line.startswith("out_time_us=") or line.startswith("out_time_ms="):
+        # ``out_time_ms`` is historically microseconds in ffmpeg; both are µs.
+        try:
+            return int(line.split("=", 1)[1]) / 1_000_000
+        except ValueError:
+            return None
+    if line.startswith("out_time="):
+        value = line.split("=", 1)[1].strip()
+        if value in ("", "N/A"):
+            return None
+        try:
+            hh, mm, ss = value.split(":")
+            return int(hh) * 3600 + int(mm) * 60 + float(ss)
+        except ValueError:
+            return None
+    return None
+
+
+def run_ffmpeg_progress(
+    ffmpeg_bin: str,
+    args: Sequence[str],
+    *,
+    on_progress: Callable[[float], None] | None = None,
+) -> None:
+    """Run ffmpeg, streaming ``-progress`` output to ``on_progress(elapsed_s)``.
+
+    Unlike :func:`run_ffmpeg` this does not buffer until completion; it reads the
+    machine-readable progress stream line by line so a long re-encode can report a
+    live percentage. Raises :class:`FFmpegError` on a non-zero exit.
+
+    ``stderr`` is captured to a temp file (not a pipe) so a chatty encode can never
+    dead-lock on a full pipe buffer while we are busy reading stdout progress.
+    """
+    command = [
+        ffmpeg_bin,
+        "-hide_banner",
+        "-nostdin",
+        "-y",
+        "-progress",
+        "pipe:1",
+        "-nostats",
+        *args,
+    ]
+    logger.debug("exec (progress): %s", " ".join(command))
+    with tempfile.TemporaryFile(mode="w+") as errfile:
+        try:
+            proc = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=errfile,
+                text=True,
+                bufsize=1,
+            )
+        except FileNotFoundError as exc:  # binary missing on PATH
+            raise FFmpegError(command, 127, str(exc)) from exc
+
+        assert proc.stdout is not None
+        try:
+            for raw in proc.stdout:
+                elapsed = _parse_out_time(raw.strip())
+                if elapsed is not None and on_progress is not None:
+                    on_progress(elapsed)
+        finally:
+            proc.stdout.close()
+        returncode = proc.wait()
+        if returncode != 0:
+            errfile.seek(0)
+            raise FFmpegError(command, returncode, errfile.read())

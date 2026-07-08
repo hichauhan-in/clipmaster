@@ -33,6 +33,7 @@ class Stage(str, Enum):
     REPORT = "report"
     CLEANUP = "cleanup"
     CLIPS = "clips"
+    NOTES = "notes"
     EDIT = "edit"
     DONE = "done"
 

@@ -10,12 +10,12 @@ Everything runs **on your machine**: local Whisper for speech-to-text and a
 local **Ollama** LLM for understanding. No cloud, no per-minute costs, your
 footage never leaves the box.
 
-> **Status:** Milestones 1–3 are implemented — the analysis pipeline (ingest,
-> chunking, transcription, silence detection, LLM analysis, report), the HTTP +
-> WebSocket **API server**, and the **Electron desktop editor shell** (dark,
-> minimal UI with live status and per-phase action prompts). Cleanup, shorts and
-> editing are on the [roadmap](#roadmap) and build directly on the analysis
-> artifact.
+> **Status:** Milestones 1–5, 7 and 8 are implemented — the analysis pipeline
+> (ingest, chunking, transcription, silence detection, multi-factor LLM/visual
+> analysis, report), the HTTP + WebSocket **API server**, the **Electron desktop
+> editor shell**, and the post-analysis actions: **cleanup** (trimmed cut),
+> **shorts** (vertical 9:16 clips) and **notes** (Markdown study guide). Only
+> **M6 — editing & templates** remains on the [roadmap](#roadmap).
 
 ---
 
@@ -279,6 +279,9 @@ passing **`--config path.yaml`**, or setting `CLIPMASTER_*` env vars.
 |                 | `visual_keep_pad_seconds`  | `2.0`              | Seconds kept around silent on-screen navigation/demos |
 | `clips`         | `max_duration_seconds`     | `30`               | Soft max length of a generated short                |
 |                 | `target_count`             | `6`                | How many shorts to produce                          |
+| `render`        | `crf`                      | `20`               | H.264 quality for cleanup/shorts (lower = better)   |
+|                 | `shorts_width` / `_height` | `1080` / `1920`    | Vertical 9:16 shorts canvas                         |
+|                 | `shorts_blur_background`   | `true`             | Letterbox over a blurred fill (vs. black bars)      |
 
 Environment overrides: `CLIPMASTER_WORKSPACE`, `CLIPMASTER_OLLAMA_HOST`,
 `CLIPMASTER_LLM_MODEL`, `CLIPMASTER_WHISPER_MODEL`, `CLIPMASTER_WHISPER_DEVICE`,
@@ -506,6 +509,9 @@ Model and log-path choices are remembered in `config/local.yaml`.
 | GET    | `/api/projects/{id}`          | full `analysis.json`                     |
 | GET    | `/api/projects/{id}/report`   | Markdown report                          |
 | DELETE | `/api/projects/{id}`          | delete a project folder from the workspace |
+| POST   | `/api/projects/{id}/notes`    | generate Markdown study notes → `{job_id}` |
+| POST   | `/api/projects/{id}/cleanup`  | render the cleaned-up cut → `{job_id}`   |
+| POST   | `/api/projects/{id}/shorts`   | render vertical short clips → `{job_id}` |
 | GET    | `/api/diagnostics`            | dependency + Ollama + log status         |
 | POST   | `/api/ollama/start`           | start `ollama serve` if not running      |
 | POST   | `/api/settings/model`         | set the active LLM model                 |
@@ -550,14 +556,18 @@ Built incrementally; each milestone consumes the analysis artifact.
   the desktop app can drive the pipeline and show live status.
 - [x] **M3 — Desktop editor shell (Electron + React):** dark, minimal UI —
   Home (select + probe), Processing (live stage/log), Results (summary,
-  timeline, chapters, clips, transcript) with per-phase action prompts
-  ("Clean up / Make shorts / Edit / Notes & summary"). Includes a **Settings** panel
+  timeline, chapters, clips, transcript) with per-phase action prompts. **Clean up**,
+  **Make shorts** and **Notes & summary** run from here (each with a setup popup,
+  live progress and an *Open folder* button); **Edit** is still to come. Includes a
+  **Settings** panel
   to detect/guide dependency setup, start Ollama, pick/pull models, and
   configure a log file.
-- [ ] **M4 — Cleanup renderer:** turn `cleanup_keep_spans` into a trimmed video
-  (remove silence / filler / off-topic), with a review-before-render step.
-- [ ] **M5 — Shorts generator:** render `clip_candidates` to ≤ N-second shorts,
-  with reframing and burned-in captions.
+- [x] **M4 — Cleanup renderer:** turn `cleanup_keep_spans` into a trimmed video
+  (remove silence / filler / off-topic) via a single-pass ffmpeg trim/concat,
+  streamed with live progress. On-screen demos and navigation are always kept.
+- [x] **M5 — Shorts generator:** cut the best `clip_candidates` into vertical
+  9:16 shorts fit to a user-chosen soft length range (e.g. 10–30s), letterboxed
+  over a blurred fill (the neutral default template; a specific style comes later).
 - [ ] **M6 — Editing & templates:** intro/outro banners from files, described
   text overlays, and reusable templates that remember placement.
 - [x] **M7 — Visual & audio analysis:** scene detection + keyframe sampling with
@@ -567,10 +577,11 @@ Built incrementally; each milestone consumes the analysis artifact.
   Cleanup keep-spans also preserve **silent-but-active footage** — on-screen
   navigation and demos that show *how to reach* something — so those sections
   are never trimmed just because nobody is talking over them.
-- [ ] **M8 — Notes & study-guide export:** after analysis, generate reference
-  notes as Markdown — topics, subtopics and brief descriptions — with proper
-  **mermaid diagrams**, split across multiple files when the video spans several
-  topics. Surfaced today as a "coming soon" action; built out alongside M4–M6.
+- [x] **M8 — Notes & study-guide export:** generate reference notes as Markdown —
+  an index plus one file per chapter, with topics, subtopics, key points and
+  **mermaid diagrams** (a programmatic topic mindmap + per-chapter LLM diagrams).
+  Written by the local LLM, with a structural fallback when Ollama is offline;
+  the user picks the output folder.
 
 ---
 

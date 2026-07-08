@@ -16,6 +16,22 @@ export interface AnalyzeOptions {
   weights: SignalWeights
 }
 
+/** Options for the post-analysis action endpoints. */
+export interface NotesOptions {
+  outputDir?: string | null
+}
+
+export interface CleanupOptions {
+  outputDir?: string | null
+}
+
+export interface ShortsOptions {
+  minSeconds: number
+  maxSeconds: number
+  count?: number | null
+  outputDir?: string | null
+}
+
 export interface VideoStreamInfo {
   codec: string | null
   width: number | null
@@ -212,6 +228,11 @@ export interface ActionResult {
   message: string
 }
 
+export interface JobRef {
+  job_id: string
+  status: string
+}
+
 export interface PullStatus {
   pull_id: string
   model: string
@@ -237,4 +258,8 @@ export interface ProgressEvent {
   data?: Record<string, unknown>
   timestamp?: number
   project_id?: string
+  // Present on an action's `job_done` (notes / cleanup / shorts).
+  kind?: string
+  output_dir?: string
+  files?: string[]
 }

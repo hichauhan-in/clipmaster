@@ -113,6 +113,22 @@ class ClipsConfig(BaseModel):
     target_count: int = 6
 
 
+class RenderConfig(BaseModel):
+    """Encoding + framing defaults for the cleanup / shorts render actions."""
+
+    video_codec: str = "libx264"
+    preset: str = "veryfast"
+    crf: int = 20
+    audio_codec: str = "aac"
+    audio_bitrate: str = "160k"
+
+    # Vertical short-form canvas (9:16). Source frames are letterboxed onto a
+    # blurred fill of themselves so nothing is cropped off educational content.
+    shorts_width: int = 1080
+    shorts_height: int = 1920
+    shorts_blur_background: bool = True
+
+
 class LoggingConfig(BaseModel):
     level: str = "INFO"
     # Optional path to a log file or a directory (a clipmaster.log is created in
@@ -131,6 +147,7 @@ class Settings(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
     clips: ClipsConfig = Field(default_factory=ClipsConfig)
+    render: RenderConfig = Field(default_factory=RenderConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
     @property

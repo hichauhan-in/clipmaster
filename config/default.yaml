@@ -121,6 +121,21 @@ clips:
   target_count: 6                # how many candidate clips to surface
 
 # ------------------------------------------------------------------------------------
+# Render defaults for the cleanup / shorts actions (ffmpeg encoding + framing)
+# ------------------------------------------------------------------------------------
+render:
+  video_codec: "libx264"
+  preset: "veryfast"
+  crf: 20                        # lower = better quality / bigger file
+  audio_codec: "aac"
+  audio_bitrate: "160k"
+  # Vertical short-form canvas (9:16). Source frames are letterboxed onto a
+  # blurred fill of themselves so nothing is cropped off educational content.
+  shorts_width: 1080
+  shorts_height: 1920
+  shorts_blur_background: true
+
+# ------------------------------------------------------------------------------------
 # Logging
 # ------------------------------------------------------------------------------------
 logging:

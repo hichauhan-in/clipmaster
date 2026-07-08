@@ -18,6 +18,10 @@ export interface JobStreamState {
   error: string | null
   projectId: string | null
   connected: boolean
+  // Populated from an action's `job_done` (notes / cleanup / shorts).
+  outputDir: string | null
+  files: string[]
+  doneMessage: string | null
 }
 
 const INITIAL: JobStreamState = {
@@ -28,7 +32,10 @@ const INITIAL: JobStreamState = {
   done: false,
   error: null,
   projectId: null,
-  connected: false
+  connected: false,
+  outputDir: null,
+  files: [],
+  doneMessage: null
 }
 
 /**
@@ -81,7 +88,15 @@ export function useJobStream(jobId: string | null): JobStreamState {
 function reduce(prev: JobStreamState, ev: ProgressEvent): JobStreamState {
   if (ev.type === 'ping') return prev
   if (ev.type === 'job_done') {
-    return { ...prev, done: true, projectId: ev.project_id ?? prev.projectId }
+    return {
+      ...prev,
+      done: true,
+      fraction: 1,
+      projectId: ev.project_id ?? prev.projectId,
+      outputDir: ev.output_dir ?? prev.outputDir,
+      files: ev.files ?? prev.files,
+      doneMessage: ev.message ?? prev.doneMessage
+    }
   }
   if (ev.type === 'job_error') {
     return { ...prev, error: ev.message ?? 'Job failed', done: true }

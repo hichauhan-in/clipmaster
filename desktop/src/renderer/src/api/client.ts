@@ -2,12 +2,16 @@ import type {
   ActionResult,
   AnalysisReport,
   AnalyzeOptions,
+  CleanupOptions,
   DiagnosticsResponse,
   HealthResponse,
+  JobRef,
   LogsResponse,
+  NotesOptions,
   ProbeResponse,
   ProjectSummary,
-  PullStatus
+  PullStatus,
+  ShortsOptions
 } from '../types'
 
 // The backend URL is provided by the Electron main process. We resolve it once
@@ -63,6 +67,30 @@ export const client = {
 
   deleteProject: (id: string) =>
     api<ActionResult>(`/api/projects/${id}`, { method: 'DELETE' }),
+
+  // --- Post-analysis actions (return a job to stream over the WebSocket) -----
+  makeNotes: (id: string, opts: NotesOptions) =>
+    api<JobRef>(`/api/projects/${id}/notes`, {
+      method: 'POST',
+      body: JSON.stringify({ output_dir: opts.outputDir ?? null })
+    }),
+
+  makeCleanup: (id: string, opts: CleanupOptions = {}) =>
+    api<JobRef>(`/api/projects/${id}/cleanup`, {
+      method: 'POST',
+      body: JSON.stringify({ output_dir: opts.outputDir ?? null })
+    }),
+
+  makeShorts: (id: string, opts: ShortsOptions) =>
+    api<JobRef>(`/api/projects/${id}/shorts`, {
+      method: 'POST',
+      body: JSON.stringify({
+        min_seconds: opts.minSeconds,
+        max_seconds: opts.maxSeconds,
+        count: opts.count ?? null,
+        output_dir: opts.outputDir ?? null
+      })
+    }),
 
   // --- Diagnostics ----------------------------------------------------------
   diagnostics: () => api<DiagnosticsResponse>('/api/diagnostics'),

@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { AnalysisReport, SegmentKind } from '../types'
 import { baseName, formatTime, humanSize, kindColor } from '../util'
+import { ActionModal, type ActionKind } from './ActionModal'
 
 interface Props {
   report: AnalysisReport
@@ -10,6 +11,7 @@ interface Props {
 
 export function ResultsView({ report, workspace, onNotify }: Props): JSX.Element {
   const duration = report.media.duration_s || 1
+  const [action, setAction] = useState<ActionKind | null>(null)
   const kindBySegment = useMemo(() => {
     const map = new Map<number, SegmentKind>()
     for (const a of report.segment_analyses) map.set(a.segment_id, a.kind)
@@ -46,20 +48,17 @@ export function ResultsView({ report, workspace, onNotify }: Props): JSX.Element
       <div className="card">
         <h3>What would you like to do?</h3>
         <div className="actionbar">
-          <button className="action" disabled>
-            <span className="soon">soon</span>
+          <button className="action" onClick={() => setAction('notes')}>
             <div className="t">Notes &amp; summary</div>
             <div className="d">Study notes as Markdown — topics, subtopics and mermaid diagrams.</div>
           </button>
-          <button className="action" disabled>
-            <span className="soon">soon</span>
+          <button className="action" onClick={() => setAction('cleanup')}>
             <div className="t">Clean up</div>
             <div className="d">Remove silence, filler and off-topic to a trimmed cut.</div>
           </button>
-          <button className="action" disabled>
-            <span className="soon">soon</span>
+          <button className="action" onClick={() => setAction('shorts')}>
             <div className="t">Make shorts</div>
-            <div className="d">Render ≤ 20–30s clips from the best moments.</div>
+            <div className="d">Cut vertical 9:16 clips from the best moments.</div>
           </button>
           <button className="action" disabled>
             <span className="soon">soon</span>
@@ -68,6 +67,13 @@ export function ResultsView({ report, workspace, onNotify }: Props): JSX.Element
           </button>
         </div>
       </div>
+
+      <ActionModal
+        action={action}
+        report={report}
+        onClose={() => setAction(null)}
+        onNotify={onNotify}
+      />
 
       {report.summary && (
         <div className="card">

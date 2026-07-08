@@ -40,6 +40,35 @@ class JobRef(BaseModel):
     status: str
 
 
+# --- Post-analysis actions (notes / cleanup / shorts) ------------------------
+class NotesRequest(BaseModel):
+    """Generate Markdown study notes for a project."""
+
+    output_dir: str | None = Field(
+        None,
+        description="Parent folder to write the notes into. Omit to use the project folder.",
+    )
+
+
+class CleanupRequest(BaseModel):
+    """Render the cleaned-up cut for a project."""
+
+    output_dir: str | None = Field(
+        None, description="Folder to write the cleaned video into. Omit for the project folder."
+    )
+
+
+class ShortsRequest(BaseModel):
+    """Render vertical short-form clips within a soft duration range."""
+
+    min_seconds: float = Field(10.0, ge=3.0, le=180.0)
+    max_seconds: float = Field(30.0, ge=3.0, le=180.0)
+    count: int | None = Field(None, ge=1, le=30, description="How many shorts to render.")
+    output_dir: str | None = Field(
+        None, description="Folder to write the shorts into. Omit for the project folder."
+    )
+
+
 class JobStatus(BaseModel):
     job_id: str
     status: str  # pending | running | done | error

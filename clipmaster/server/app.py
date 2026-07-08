@@ -12,6 +12,9 @@ GET  /api/projects               list analysed projects in the workspace
 GET  /api/projects/{id}          the full analysis.json artifact
 GET  /api/projects/{id}/report   the Markdown report (text/markdown)
 DELETE /api/projects/{id}        remove a project's folder from the workspace
+POST /api/projects/{id}/notes    generate Markdown study notes -> {job_id}
+POST /api/projects/{id}/cleanup  render the cleaned-up cut -> {job_id}
+POST /api/projects/{id}/shorts   render vertical short clips -> {job_id}
 """
 
 from __future__ import annotations
@@ -21,6 +24,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,6 +38,7 @@ from clipmaster.server.ollama_pull import PullManager, PullState
 from clipmaster.server.schemas import (
     ActionResult,
     AnalyzeRequest,
+    CleanupRequest,
     ComponentStatus,
     DiagnosticsResponse,
     HealthResponse,
@@ -42,12 +47,14 @@ from clipmaster.server.schemas import (
     LogInfo,
     LogPathRequest,
     LogsResponse,
+    NotesRequest,
     ProbeResponse,
     ProjectSummary,
     PullRequest,
     PullStatus,
     PythonInfo,
     SelectModelRequest,
+    ShortsRequest,
 )
 from clipmaster.version import __version__
 
@@ -75,6 +82,27 @@ def _check_binary(binary: str) -> ComponentStatus:
         return ComponentStatus(name=binary, ok=True, detail="found on PATH")
     except (OSError, subprocess.CalledProcessError):
         return ComponentStatus(name=binary, ok=False, detail=f"'{binary}' not found")
+
+
+def _slugify_stem(source_path: str) -> str:
+    """A filesystem-safe slug of a source video's file stem (for output folders)."""
+    import re
+
+    stem = Path(source_path).stem
+    slug = re.sub(r"[^a-z0-9]+", "-", stem.lower()).strip("-")[:48].strip("-")
+    return slug or "video"
+
+
+def _action_done(
+    kind: str, output_dir: Path, files: list[Path], message: str
+) -> dict[str, Any]:
+    """Terminal ``job_done`` payload for a render/notes action."""
+    return {
+        "kind": kind,
+        "output_dir": str(output_dir),
+        "files": [str(f) for f in files],
+        "message": message,
+    }
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -347,6 +375,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return
 
     # --- Projects -------------------------------------------------------------
+    def _project_dir(project_id: str) -> Path:
+        """Resolve a project id to its workspace folder, guarding against traversal.
+
+        ``project_id`` arrives as a URL path segment, so we resolve it and require
+        the result to be a *direct child* of the workspace — a crafted id such as
+        ".." or an absolute path can never escape the workspace.
+        """
+        workspace = settings.workspace_path.resolve()
+        project_dir = (settings.workspace_path / project_id).resolve()
+        if project_dir.parent != workspace or not project_dir.is_dir():
+            raise HTTPException(status_code=404, detail="Unknown project")
+        return project_dir
+
+    def _load_report(project_id: str) -> tuple[AnalysisReport, Path]:
+        project_dir = _project_dir(project_id)
+        path = project_dir / "analysis.json"
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Unknown project")
+        return AnalysisReport.load(path), project_dir
+
+    def _resolve_output_dir(req_dir: str | None, default: Path) -> Path:
+        if not req_dir or not req_dir.strip():
+            return default
+        try:
+            target = Path(req_dir).expanduser()
+            target.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=400, detail=f"Cannot write to that folder: {exc}"
+            ) from exc
+        return target
+
     @app.get("/api/projects", response_model=list[ProjectSummary])
     def list_projects() -> list[ProjectSummary]:
         summaries: list[ProjectSummary] = []
@@ -371,32 +431,75 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/projects/{project_id}")
     def get_project(project_id: str) -> JSONResponse:
-        path = settings.workspace_path / project_id / "analysis.json"
-        if not path.is_file():
-            raise HTTPException(status_code=404, detail="Unknown project")
-        return JSONResponse(content=AnalysisReport.load(path).model_dump())
+        report, _ = _load_report(project_id)
+        return JSONResponse(content=report.model_dump())
 
     @app.get("/api/projects/{project_id}/report")
     def get_project_report(project_id: str) -> PlainTextResponse:
         from clipmaster.report.builder import render_markdown
 
-        path = settings.workspace_path / project_id / "analysis.json"
-        if not path.is_file():
-            raise HTTPException(status_code=404, detail="Unknown project")
-        return PlainTextResponse(
-            render_markdown(AnalysisReport.load(path)), media_type="text/markdown"
-        )
+        report, _ = _load_report(project_id)
+        return PlainTextResponse(render_markdown(report), media_type="text/markdown")
 
     @app.delete("/api/projects/{project_id}", response_model=ActionResult)
     def delete_project(project_id: str) -> ActionResult:
-        # Resolve and confirm the target is a direct child of the workspace so a
-        # crafted id (e.g. ".." or an absolute path) can never delete elsewhere.
-        workspace = settings.workspace_path.resolve()
-        project_dir = (settings.workspace_path / project_id).resolve()
-        if project_dir.parent != workspace or not project_dir.is_dir():
-            raise HTTPException(status_code=404, detail="Unknown project")
+        project_dir = _project_dir(project_id)
         shutil.rmtree(project_dir)
         logger.info("Deleted project %s", project_id)
         return ActionResult(ok=True, message="Project deleted.")
+
+    # --- Post-analysis actions (notes / cleanup / shorts) --------------------
+    @app.post("/api/projects/{project_id}/notes", response_model=JobRef)
+    def make_notes(project_id: str, req: NotesRequest) -> JobRef:
+        from clipmaster.actions import build_notes
+
+        report, project_dir = _load_report(project_id)
+        stem = _slugify_stem(report.source_path)
+        default = project_dir / "notes"
+        parent = _resolve_output_dir(req.output_dir, default.parent if req.output_dir else default)
+        out_dir = (parent / f"{stem}-notes") if req.output_dir else default
+
+        def _work(bus: Any) -> dict[str, Any]:
+            result = build_notes(report, settings, output_dir=out_dir, bus=bus)
+            return _action_done("notes", result.output_dir, result.files, result.message)
+
+        job = manager.start_task("notes", _work)
+        return JobRef(job_id=job.id, status=job.status)
+
+    @app.post("/api/projects/{project_id}/cleanup", response_model=JobRef)
+    def make_cleanup(project_id: str, req: CleanupRequest) -> JobRef:
+        from clipmaster.actions import build_cleanup
+
+        report, project_dir = _load_report(project_id)
+        out_dir = _resolve_output_dir(req.output_dir, project_dir / "cleanup")
+
+        def _work(bus: Any) -> dict[str, Any]:
+            result = build_cleanup(report, settings, output_dir=out_dir, bus=bus)
+            return _action_done("cleanup", result.output_dir, result.files, result.message)
+
+        job = manager.start_task("cleanup", _work)
+        return JobRef(job_id=job.id, status=job.status)
+
+    @app.post("/api/projects/{project_id}/shorts", response_model=JobRef)
+    def make_shorts(project_id: str, req: ShortsRequest) -> JobRef:
+        from clipmaster.actions import build_shorts
+
+        report, project_dir = _load_report(project_id)
+        out_dir = _resolve_output_dir(req.output_dir, project_dir / "shorts")
+
+        def _work(bus: Any) -> dict[str, Any]:
+            result = build_shorts(
+                report,
+                settings,
+                min_seconds=req.min_seconds,
+                max_seconds=req.max_seconds,
+                count=req.count,
+                output_dir=out_dir,
+                bus=bus,
+            )
+            return _action_done("shorts", result.output_dir, result.files, result.message)
+
+        job = manager.start_task("shorts", _work)
+        return JobRef(job_id=job.id, status=job.status)
 
     return app

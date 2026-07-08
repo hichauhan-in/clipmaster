@@ -16,7 +16,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from clipmaster.config import Settings, SignalWeights
 from clipmaster.events import EventBus
@@ -66,6 +66,58 @@ class JobManager:
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
 
+    def _emitter(self, job: Job) -> Callable[[dict[str, Any]], None]:
+        """Return a thread-safe ``emit(payload)`` that appends + wakes waiters.
+
+        Analysis and the post-analysis actions all run in the worker thread but
+        publish progress that the WebSocket handler (on the event loop) streams;
+        this bridges the two with ``call_soon_threadsafe``.
+        """
+        loop = self._loop or asyncio.get_event_loop()
+
+        def _append_and_notify(payload: dict[str, Any]) -> None:
+            job.events.append(payload)
+            job.updated.set()
+
+        def _emit(payload: dict[str, Any]) -> None:
+            loop.call_soon_threadsafe(_append_and_notify, payload)
+
+        return _emit
+
+    def start_task(
+        self,
+        kind: str,
+        work: Callable[[EventBus], dict[str, Any] | None],
+    ) -> Job:
+        """Run ``work(bus)`` in the worker thread as a tracked, streamable job.
+
+        ``work`` may publish progress to the provided :class:`EventBus`; whatever
+        dict it returns is merged into the terminal ``job_done`` event (e.g. the
+        output directory and file list of a render action).
+        """
+        loop = self._loop or asyncio.get_event_loop()
+        job = Job(id=uuid.uuid4().hex[:12], kind=kind)
+        self._jobs[job.id] = job
+        emit = self._emitter(job)
+
+        bus = EventBus()
+        bus.subscribe(lambda event: emit(event.to_dict()))
+
+        def _run() -> None:
+            try:
+                result = work(bus) or {}
+                job.status = "done"
+                emit({"type": JOB_DONE, **result})
+            except Exception as exc:  # noqa: BLE001 - reported to the client
+                logger.exception("%s job %s failed", kind, job.id)
+                job.status = "error"
+                job.error = str(exc)
+                emit({"type": JOB_ERROR, "message": str(exc)})
+
+        job.status = "running"
+        loop.run_in_executor(self._executor, _run)
+        return job
+
     def start_analyze(
         self,
         path: str,
@@ -101,17 +153,10 @@ class JobManager:
             loop = asyncio.get_event_loop()
         job = Job(id=uuid.uuid4().hex[:12], kind="analyze")
         self._jobs[job.id] = job
-
-        def _append_and_notify(payload: dict[str, Any]) -> None:
-            # Runs on the event-loop thread only.
-            job.events.append(payload)
-            job.updated.set()
-
-        def _emit(payload: dict[str, Any]) -> None:
-            loop.call_soon_threadsafe(_append_and_notify, payload)
+        emit = self._emitter(job)
 
         bus = EventBus()
-        bus.subscribe(lambda event: _emit(event.to_dict()))
+        bus.subscribe(lambda event: emit(event.to_dict()))
 
         def _run() -> None:
             try:
@@ -122,12 +167,12 @@ class JobManager:
                 write_markdown(report, project_dir / "analysis.md")
                 job.project_id = report.project_id
                 job.status = "done"
-                _emit({"type": JOB_DONE, "project_id": report.project_id})
+                emit({"type": JOB_DONE, "project_id": report.project_id})
             except Exception as exc:  # noqa: BLE001 - reported to the client
                 logger.exception("Analysis job %s failed", job.id)
                 job.status = "error"
                 job.error = str(exc)
-                _emit({"type": JOB_ERROR, "message": str(exc)})
+                emit({"type": JOB_ERROR, "message": str(exc)})
 
         job.status = "running"
         loop.run_in_executor(self._executor, _run)
