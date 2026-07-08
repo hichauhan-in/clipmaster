@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clipmaster"
+version = "0.1.0"
+description = "Local-first video analysis & editing pipeline: transcribe, analyze, clean up, generate shorts, and edit with a professional desktop UI."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "ClipMaster" }]
+
+# --- Core (lightweight) dependencies ---
+# Heavy ML dependencies live in optional extras so the package imports,
+# the CLI runs `--help`, and the unit tests pass without a GPU/model stack.
+dependencies = [
+    "pydantic>=2.6",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "rich>=13.7",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+# Local speech-to-text. faster-whisper runs on CPU everywhere and on NVIDIA GPUs.
+# For AMD (7900 XT) GPU acceleration on Windows, see README -> "AMD GPU acceleration".
+transcribe = [
+    "faster-whisper>=1.0.3",
+]
+# HTTP API + live progress for the desktop app.
+server = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+    "python-multipart>=0.0.9",
+    "websockets>=12.0",
+]
+# Developer tooling.
+dev = [
+    "pytest>=8.2",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+clipmaster = "clipmaster.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["clipmaster*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

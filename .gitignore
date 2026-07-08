@@ -1,0 +1,46 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- Node / Electron ----
+node_modules/
+desktop/dist/
+desktop/out/
+desktop/.vite/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---- ClipMaster runtime data ----
+# Working directory where projects, chunks, transcripts and renders are written.
+workspace/
+data/
+outputs/
+*.clipmaster/
+
+# Downloaded / cached ML models
+models/
+.cache/
+
+# ---- Editor / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---- Local config overrides (keep default.yaml tracked) ----
+config/local.yaml
+.env
