@@ -65,6 +65,11 @@ export function ResultsView({ report, workspace, onNotify }: Props): JSX.Element
             <div className="t">Edit</div>
             <div className="d">Add intro/outro banners and text from templates.</div>
           </button>
+          <button className="action" disabled>
+            <span className="soon">soon</span>
+            <div className="t">Notes &amp; summary</div>
+            <div className="d">Study notes as Markdown — topics, subtopics and mermaid diagrams.</div>
+          </button>
         </div>
       </div>
 

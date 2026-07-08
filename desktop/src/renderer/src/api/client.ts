@@ -1,6 +1,7 @@
 import type {
   ActionResult,
   AnalysisReport,
+  AnalyzeOptions,
   DiagnosticsResponse,
   HealthResponse,
   LogsResponse,
@@ -44,10 +45,16 @@ export const client = {
       body: JSON.stringify({ path })
     }),
 
-  analyze: (path: string, skipAnalysis: boolean) =>
+  analyze: (path: string, opts: AnalyzeOptions) =>
     api<{ job_id: string; status: string }>('/api/analyze', {
       method: 'POST',
-      body: JSON.stringify({ path, skip_analysis: skipAnalysis })
+      body: JSON.stringify({
+        path,
+        skip_analysis: opts.skipAnalysis,
+        audio_enabled: opts.audioEnabled,
+        visual_enabled: opts.visualEnabled,
+        weights: opts.weights
+      })
     }),
 
   projects: () => api<ProjectSummary[]>('/api/projects'),

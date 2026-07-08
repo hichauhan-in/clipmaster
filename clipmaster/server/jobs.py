@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from clipmaster.config import Settings
+from clipmaster.config import Settings, SignalWeights
 from clipmaster.events import EventBus
 from clipmaster.logging_setup import get_logger
 from clipmaster.pipeline import analyze_video, project_dir_for
@@ -66,11 +66,35 @@ class JobManager:
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
 
-    def start_analyze(self, path: str, *, skip_analysis: bool) -> Job:
-        """Create and launch an analysis job; returns immediately."""
+    def start_analyze(
+        self,
+        path: str,
+        *,
+        skip_analysis: bool,
+        audio_enabled: bool | None = None,
+        visual_enabled: bool | None = None,
+        weights: dict[str, float] | None = None,
+    ) -> Job:
+        """Create and launch an analysis job; returns immediately.
+
+        ``audio_enabled`` / ``visual_enabled`` / ``weights`` are optional per-job
+        overrides for the multi-factor analysis; ``None`` keeps the configured
+        value. They are applied to a private copy so concurrent jobs and the
+        persisted config are never mutated.
+        """
         source = Path(path)
         if not source.exists() or not source.is_file():
             raise FileNotFoundError(f"Input file not found: {path}")
+
+        settings = self.settings
+        if audio_enabled is not None or visual_enabled is not None or weights is not None:
+            settings = settings.model_copy(deep=True)
+            if audio_enabled is not None:
+                settings.analysis.audio_enabled = audio_enabled
+            if visual_enabled is not None:
+                settings.analysis.visual_enabled = visual_enabled
+            if weights is not None:
+                settings.analysis.weights = SignalWeights(**weights)
 
         loop = self._loop
         if loop is None:  # pragma: no cover - defensive; set on startup
@@ -92,9 +116,9 @@ class JobManager:
         def _run() -> None:
             try:
                 report = analyze_video(
-                    source, self.settings, bus=bus, skip_analysis=skip_analysis
+                    source, settings, bus=bus, skip_analysis=skip_analysis
                 )
-                project_dir = project_dir_for(self.settings, source)
+                project_dir = project_dir_for(settings, source)
                 write_markdown(report, project_dir / "analysis.md")
                 job.project_id = report.project_id
                 job.status = "done"

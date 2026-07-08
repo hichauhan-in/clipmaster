@@ -248,6 +248,10 @@ signals** — transcript (60%), audio delivery (20%) and on-screen visual conten
 segment is kept when `importance >= analysis.keep_importance_threshold` and it
 isn't filler/off-topic — **or** when the frame shows informative on-screen content
 (slides, demos, code, labs, diagrams), which is always kept regardless of speech.
+Silent stretches with on-screen navigation or demos are also retained in
+`cleanup_keep_spans` (padded by `analysis.visual_keep_pad_seconds` and bridged
+across scene changes) so footage that shows *how to reach* something survives
+cleanup even with no narration over it.
 
 ---
 
@@ -272,6 +276,7 @@ passing **`--config path.yaml`**, or setting `CLIPMASTER_*` env vars.
 |                 | `max_input_chars`          | `12000`            | Transcript window size per LLM call                 |
 | `analysis`      | `filler_words`             | list               | Words that lower a segment's importance             |
 |                 | `keep_importance_threshold`| `0.35`             | Keep/cut cutoff for cleanup                         |
+|                 | `visual_keep_pad_seconds`  | `2.0`              | Seconds kept around silent on-screen navigation/demos |
 | `clips`         | `max_duration_seconds`     | `30`               | Soft max length of a generated short                |
 |                 | `target_count`             | `6`                | How many shorts to produce                          |
 
@@ -452,6 +457,23 @@ Useful environment variables for the desktop app:
 | `CLIPMASTER_SERVER_PORT`  | API port (default `8756`)                      |
 | `CLIPMASTER_LOG_FILE`     | Path (file or folder) for a persistent log file |
 
+### Per-video analysis signals
+
+After you pick a video (before starting), the Home screen shows an **Analysis
+signals** panel so each run can be tuned to the material:
+
+- **Transcript** — always on; the primary signal (what is said).
+- **Audio delivery** — toggle; loudness, pace and pauses (how it's said).
+  Automatically disabled when the file has no audio track.
+- **On-screen visuals** — toggle; slides, code, demos and hardware read by the
+  local vision model. Turn it off to rely on transcript (+ audio) only, which is
+  faster and needs no vision model.
+
+Each enabled signal has a weight slider; the panel shows the live **percentage**
+each one contributes (normalized across the enabled signals) — exactly the
+balance the backend applies when fusing per-moment importance. These choices are
+sent per job and never change your saved config.
+
 ### Settings
 
 The app ships with a **Settings** panel (gear icon at the bottom of the left
@@ -477,7 +499,7 @@ Model and log-path choices are remembered in `config/local.yaml`.
 | ------ | ----------------------------- | ---------------------------------------- |
 | GET    | `/api/health`                 | ffmpeg / Ollama / whisper status         |
 | POST   | `/api/probe`                  | quick media info + chunk plan            |
-| POST   | `/api/analyze`                | start an analysis job → `{job_id}`       |
+| POST   | `/api/analyze`                | start a job (+per-job signal options) → `{job_id}` |
 | GET    | `/api/jobs/{id}`              | job status snapshot                      |
 | WS     | `/ws/jobs/{id}`               | live progress event stream               |
 | GET    | `/api/projects`               | list analysed projects                   |
@@ -528,7 +550,7 @@ Built incrementally; each milestone consumes the analysis artifact.
 - [x] **M3 — Desktop editor shell (Electron + React):** dark, minimal UI —
   Home (select + probe), Processing (live stage/log), Results (summary,
   timeline, chapters, clips, transcript) with per-phase action prompts
-  ("Summarise / Clean up / Make shorts / Edit"). Includes a **Settings** panel
+  ("Summarise / Clean up / Make shorts / Edit / Notes & summary"). Includes a **Settings** panel
   to detect/guide dependency setup, start Ollama, pick/pull models, and
   configure a log file.
 - [ ] **M4 — Cleanup renderer:** turn `cleanup_keep_spans` into a trimmed video
@@ -541,6 +563,13 @@ Built incrementally; each milestone consumes the analysis artifact.
   a local vision model (`qwen2.5vl:7b`) for on-screen content understanding, plus
   audio-delivery DSP, fused with the transcript (60/20/20) so slides, demos, code
   and labs are scored as important and never dropped for lack of speech.
+  Cleanup keep-spans also preserve **silent-but-active footage** — on-screen
+  navigation and demos that show *how to reach* something — so those sections
+  are never trimmed just because nobody is talking over them.
+- [ ] **M8 — Notes & study-guide export:** after analysis, generate reference
+  notes as Markdown — topics, subtopics and brief descriptions — with proper
+  **mermaid diagrams**, split across multiple files when the video spans several
+  topics. Surfaced today as a "coming soon" action; built out alongside M4–M6.
 
 ---
 

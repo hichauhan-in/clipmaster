@@ -101,6 +101,11 @@ class AnalysisConfig(BaseModel):
         ]
     )
 
+    # Silent-but-active footage (e.g. navigating a UI, showing how to reach a
+    # place) must survive cleanup: keep a window of this many seconds around
+    # informative on-screen keyframes even when there is no narration.
+    visual_keep_pad_seconds: float = 2.0
+
 
 class ClipsConfig(BaseModel):
     max_duration_seconds: float = 30.0

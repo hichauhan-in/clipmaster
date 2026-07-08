@@ -288,7 +288,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/analyze", response_model=JobRef)
     def analyze(req: AnalyzeRequest) -> JobRef:
         try:
-            job = manager.start_analyze(req.path, skip_analysis=req.skip_analysis)
+            job = manager.start_analyze(
+                req.path,
+                skip_analysis=req.skip_analysis,
+                audio_enabled=req.audio_enabled,
+                visual_enabled=req.visual_enabled,
+                weights=req.weights.model_dump() if req.weights else None,
+            )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return JobRef(job_id=job.id, status=job.status)

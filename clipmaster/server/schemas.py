@@ -5,12 +5,31 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class SignalWeightsInput(BaseModel):
+    """Relative weight of each analysis signal (per-job override)."""
+
+    transcript: float = 0.6
+    audio: float = 0.2
+    visual: float = 0.2
+
+
 class AnalyzeRequest(BaseModel):
     """Start an analysis job for a local video file."""
 
     path: str = Field(..., description="Absolute path to the input video.")
     skip_analysis: bool = Field(
         False, description="Transcript + silence only; skip the LLM analysis step."
+    )
+    # Per-job overrides for the multi-factor analysis. ``None`` means "use the
+    # value from the active configuration".
+    audio_enabled: bool | None = Field(
+        None, description="Include audio delivery (loudness/pace) as a signal."
+    )
+    visual_enabled: bool | None = Field(
+        None, description="Include on-screen visual content (vision model) as a signal."
+    )
+    weights: SignalWeightsInput | None = Field(
+        None, description="Balance between transcript/audio/visual signals."
     )
 
 

@@ -107,6 +107,11 @@ analysis:
     - "lab_hardware"
     - "diagram_chart"
 
+  # Silent-but-active footage (navigating a UI, showing how to reach a place) is
+  # kept: this many seconds around each informative on-screen keyframe survive
+  # cleanup even when nobody is talking over it.
+  visual_keep_pad_seconds: 2.0
+
 # ------------------------------------------------------------------------------------
 # Shorts / clip generation defaults
 # ------------------------------------------------------------------------------------

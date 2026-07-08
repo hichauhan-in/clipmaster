@@ -1,6 +1,21 @@
 // TypeScript mirror of the Python `AnalysisReport` (clipmaster/models.py). Only
 // the fields the UI reads are typed; unknown fields are ignored at runtime.
 
+/** Relative weight of each analysis signal (fractions, normalized over enabled). */
+export interface SignalWeights {
+  transcript: number
+  audio: number
+  visual: number
+}
+
+/** Per-video analysis options chosen on the Home screen before starting. */
+export interface AnalyzeOptions {
+  skipAnalysis: boolean
+  audioEnabled: boolean
+  visualEnabled: boolean
+  weights: SignalWeights
+}
+
 export interface VideoStreamInfo {
   codec: string | null
   width: number | null

@@ -337,8 +337,15 @@ class TranscriptAnalyzer:
         _boost_clips(clips, segments, audio_by_id, keyframes)
         clips = clips[:_MAX_CLIP_CANDIDATES]
 
-        # 7) Cleanup keep-spans from kept segments.
-        keep_spans = _build_keep_spans(segment_analyses)
+        # 7) Cleanup keep-spans from kept segments, plus silent-but-visually
+        #    active footage (navigation / on-screen demos) so relevant sections
+        #    are never trimmed just because nobody is talking over them.
+        keep_spans = _build_keep_spans(
+            segment_analyses,
+            visual_features=visual_features,
+            informative_kinds=set(self.analysis_config.visual_informative_kinds),
+            visual_pad=self.analysis_config.visual_keep_pad_seconds,
+        )
 
         return {
             "summary": summary,
@@ -545,9 +552,23 @@ def _assign_segments_to_chapters(
 
 
 def _build_keep_spans(
-    analyses: list[SegmentAnalysis], gap_tolerance: float = 0.75
+    analyses: list[SegmentAnalysis],
+    *,
+    visual_features: VisualFeatures | None = None,
+    informative_kinds: set[str] | None = None,
+    min_informativeness: float = 0.4,
+    visual_pad: float = 2.0,
+    gap_tolerance: float = 0.75,
 ) -> list[KeepSpan]:
-    """Merge consecutive kept segments into contiguous keep-spans."""
+    """Build cleanup keep-spans.
+
+    First merges consecutive kept transcript segments. Then adds *visual* keep
+    spans for silent stretches where the screen is doing something meaningful —
+    on-screen navigation, demos, code, slides — so footage that shows *how to
+    reach* something is preserved even with no narration over it. Scene changes
+    around each informative keyframe are used to keep a navigation sequence
+    contiguous instead of a series of fragments.
+    """
     spans: list[KeepSpan] = []
     for a in analyses:
         if not a.keep:
@@ -556,7 +577,78 @@ def _build_keep_spans(
             spans[-1].end = a.end
         else:
             spans.append(KeepSpan(start=a.start, end=a.end, reason="kept"))
-    return spans
+
+    visual_spans = _visual_keep_spans(
+        visual_features, informative_kinds or set(), min_informativeness, visual_pad
+    )
+    if not visual_spans:
+        return spans
+    return _merge_keep_spans(spans + visual_spans, gap_tolerance)
+
+
+def _visual_keep_spans(
+    visual_features: VisualFeatures | None,
+    informative_kinds: set[str],
+    min_informativeness: float,
+    pad: float,
+) -> list[KeepSpan]:
+    """Keep-spans for on-screen activity that has no narration over it."""
+    if visual_features is None or not visual_features.keyframes or not informative_kinds:
+        return []
+    scene_changes = sorted(visual_features.scene_changes)
+    raw: list[KeepSpan] = []
+    for kf in sorted(visual_features.keyframes, key=lambda k: k.time):
+        if kf.kind.value not in informative_kinds:
+            continue
+        if kf.informativeness < min_informativeness:
+            continue
+        start = max(0.0, kf.time - pad)
+        end = kf.time + pad
+        # Stretch to the surrounding scene-change boundaries (if they are close)
+        # so a continuous navigation sequence stays in one piece.
+        prev_sc = _nearest_below(scene_changes, kf.time)
+        next_sc = _nearest_above(scene_changes, kf.time)
+        if prev_sc is not None and kf.time - prev_sc <= pad * 3:
+            start = min(start, max(0.0, prev_sc - 0.25))
+        if next_sc is not None and next_sc - kf.time <= pad * 3:
+            end = max(end, next_sc + 0.25)
+        label = kf.kind.value.replace("_", " ")
+        raw.append(
+            KeepSpan(start=start, end=end, reason=f"On-screen {label} (no narration)")
+        )
+    # Bridge nearby windows (dense scene-change navigation) into one span.
+    return _merge_keep_spans(raw, gap_tolerance=max(pad * 2, 4.0))
+
+
+def _merge_keep_spans(spans: list[KeepSpan], gap_tolerance: float) -> list[KeepSpan]:
+    """Sort and coalesce overlapping / adjacent keep-spans (transcript wins)."""
+    if not spans:
+        return []
+    ordered = sorted(spans, key=lambda s: s.start)
+    merged: list[KeepSpan] = [
+        KeepSpan(start=ordered[0].start, end=ordered[0].end, reason=ordered[0].reason)
+    ]
+    for s in ordered[1:]:
+        last = merged[-1]
+        if s.start - last.end <= gap_tolerance:
+            last.end = max(last.end, s.end)
+            if last.reason != "kept" and s.reason == "kept":
+                last.reason = "kept"
+        else:
+            merged.append(KeepSpan(start=s.start, end=s.end, reason=s.reason))
+    return merged
+
+
+def _nearest_below(values: list[float], t: float) -> float | None:
+    """Largest value <= ``t`` from a sorted list, or None."""
+    i = bisect.bisect_right(values, t)
+    return values[i - 1] if i > 0 else None
+
+
+def _nearest_above(values: list[float], t: float) -> float | None:
+    """Smallest value >= ``t`` from a sorted list, or None."""
+    i = bisect.bisect_left(values, t)
+    return values[i] if i < len(values) else None
 
 
 def analyze_transcript(

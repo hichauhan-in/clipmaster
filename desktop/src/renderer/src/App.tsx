@@ -7,7 +7,13 @@ import { ResultsView } from './components/ResultsView'
 import { DiagnosticsView } from './components/DiagnosticsView'
 import { Modal } from './components/Modal'
 import { GearIcon } from './components/icons'
-import type { AnalysisReport, HealthResponse, ProbeResponse, ProjectSummary } from './types'
+import type {
+  AnalysisReport,
+  AnalyzeOptions,
+  HealthResponse,
+  ProbeResponse,
+  ProjectSummary
+} from './types'
 
 type View = 'home' | 'processing' | 'results'
 
@@ -91,11 +97,11 @@ export default function App(): JSX.Element {
   }, [probeFile])
 
   const startAnalyze = useCallback(
-    async (skipAnalysis: boolean) => {
+    async (opts: AnalyzeOptions) => {
       if (!selectedFile) return
       setStarting(true)
       try {
-        const { job_id } = await client.analyze(selectedFile, skipAnalysis)
+        const { job_id } = await client.analyze(selectedFile, opts)
         setJobId(job_id)
         setJobFilePath(selectedFile)
         setView('processing')
