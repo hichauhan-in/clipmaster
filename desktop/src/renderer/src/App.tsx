@@ -6,7 +6,8 @@ import { ProcessingView } from './components/ProcessingView'
 import { ResultsView } from './components/ResultsView'
 import { DiagnosticsView } from './components/DiagnosticsView'
 import { Modal } from './components/Modal'
-import { GearIcon, LogoMark } from './components/icons'
+import { GearIcon, LogoMark, TrashIcon } from './components/icons'
+import { baseName } from './util'
 import type {
   AnalysisReport,
   AnalyzeOptions,
@@ -33,6 +34,9 @@ export default function App(): JSX.Element {
 
   const [report, setReport] = useState<AnalysisReport | null>(null)
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
+
+  const [deleteTarget, setDeleteTarget] = useState<ProjectSummary | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<number | null>(null)
@@ -143,6 +147,26 @@ export default function App(): JSX.Element {
     setView('home')
   }, [])
 
+  const confirmDeleteProject = useCallback(async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await client.deleteProject(deleteTarget.project_id)
+      if (activeProjectId === deleteTarget.project_id) {
+        setReport(null)
+        setActiveProjectId(null)
+        setView('home')
+      }
+      await refreshProjects()
+      notify('Project deleted.')
+      setDeleteTarget(null)
+    } catch (e) {
+      notify(`Could not delete project: ${(e as Error).message}`)
+    } finally {
+      setDeleting(false)
+    }
+  }, [deleteTarget, activeProjectId, refreshProjects, notify])
+
   return (
     <div className="shell">
       <div className="titlebar">
@@ -159,6 +183,7 @@ export default function App(): JSX.Element {
         projects={projects}
         activeProjectId={activeProjectId}
         onOpenProject={loadProject}
+        onDeleteProject={setDeleteTarget}
       />
       <main className="main">
         <div className="main-inner">
@@ -193,6 +218,29 @@ export default function App(): JSX.Element {
         icon={<GearIcon size={16} />}
       >
         <DiagnosticsView onNotify={notify} />
+      </Modal>
+
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => !deleting && setDeleteTarget(null)}
+        title="Delete project?"
+        icon={<TrashIcon size={16} />}
+      >
+        <div className="confirm-dialog">
+          <p>
+            This permanently removes{' '}
+            <strong>{deleteTarget ? baseName(deleteTarget.source_path) : ''}</strong> and all of
+            its analysis files, frames and audio from the workspace. This cannot be undone.
+          </p>
+          <div className="confirm-actions">
+            <button onClick={() => setDeleteTarget(null)} disabled={deleting}>
+              Cancel
+            </button>
+            <button className="danger" onClick={confirmDeleteProject} disabled={deleting}>
+              {deleting ? 'Deleting…' : 'Delete project'}
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {toast && (

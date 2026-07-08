@@ -91,6 +91,32 @@ button.primary {
 button.primary:hover:not(:disabled) {
   background: #3d7bf0;
 }
+button.danger {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: #fff;
+  font-weight: 600;
+}
+button.danger:hover:not(:disabled) {
+  background: #e5453c;
+  border-color: #e5453c;
+}
+
+/* Confirmation dialog (delete project) */
+.confirm-dialog p {
+  margin: 0 0 18px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.confirm-dialog strong {
+  color: var(--text);
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
 
 code,
 .mono {
@@ -218,6 +244,9 @@ code,
   border-radius: var(--radius-sm);
   cursor: pointer;
   border: 1px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .project-item:hover {
   background: var(--bg-elev-2);
@@ -225,6 +254,10 @@ code,
 .project-item.active {
   background: var(--bg-elev-2);
   border-color: var(--border-strong);
+}
+.project-info {
+  flex: 1;
+  min-width: 0;
 }
 .project-item .name {
   font-size: 12.5px;
@@ -235,6 +268,30 @@ code,
 .project-item .meta {
   font-size: 11px;
   color: var(--text-faint);
+}
+.project-del {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+.project-item:hover .project-del,
+.project-item.active .project-del {
+  opacity: 1;
+}
+.project-del:hover:not(:disabled) {
+  background: rgba(248, 81, 73, 0.12);
+  border-color: rgba(248, 81, 73, 0.4);
+  color: var(--bad);
 }
 
 /* Sidebar footer (Settings — gear icon only) */

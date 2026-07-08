@@ -61,6 +61,9 @@ export const client = {
 
   project: (id: string) => api<AnalysisReport>(`/api/projects/${id}`),
 
+  deleteProject: (id: string) =>
+    api<ActionResult>(`/api/projects/${id}`, { method: 'DELETE' }),
+
   // --- Diagnostics ----------------------------------------------------------
   diagnostics: () => api<DiagnosticsResponse>('/api/diagnostics'),
 

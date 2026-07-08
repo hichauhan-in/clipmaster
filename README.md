@@ -505,6 +505,7 @@ Model and log-path choices are remembered in `config/local.yaml`.
 | GET    | `/api/projects`               | list analysed projects                   |
 | GET    | `/api/projects/{id}`          | full `analysis.json`                     |
 | GET    | `/api/projects/{id}/report`   | Markdown report                          |
+| DELETE | `/api/projects/{id}`          | delete a project folder from the workspace |
 | GET    | `/api/diagnostics`            | dependency + Ollama + log status         |
 | POST   | `/api/ollama/start`           | start `ollama serve` if not running      |
 | POST   | `/api/settings/model`         | set the active LLM model                 |

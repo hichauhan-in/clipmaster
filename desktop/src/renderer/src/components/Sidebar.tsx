@@ -1,6 +1,6 @@
 import type { HealthResponse, ProjectSummary } from '../types'
 import { baseName, formatTime } from '../util'
-import { GearIcon, LogoMark } from './icons'
+import { GearIcon, LogoMark, TrashIcon } from './icons'
 
 interface Props {
   view: string
@@ -11,6 +11,7 @@ interface Props {
   projects: ProjectSummary[]
   activeProjectId: string | null
   onOpenProject: (id: string) => void
+  onDeleteProject: (project: ProjectSummary) => void
 }
 
 export function Sidebar({
@@ -21,7 +22,8 @@ export function Sidebar({
   health,
   projects,
   activeProjectId,
-  onOpenProject
+  onOpenProject,
+  onDeleteProject
 }: Props): JSX.Element {
   const homeActive = view === 'home'
   const issues = health ? health.components.filter((c) => !c.ok).length : 0
@@ -60,10 +62,23 @@ export function Sidebar({
             className={`project-item ${activeProjectId === p.project_id ? 'active' : ''}`}
             onClick={() => onOpenProject(p.project_id)}
           >
-            <div className="name">{baseName(p.source_path)}</div>
-            <div className="meta">
-              {formatTime(p.duration_s)} · {p.chapters} ch · {p.clips} clips
+            <div className="project-info">
+              <div className="name">{baseName(p.source_path)}</div>
+              <div className="meta">
+                {formatTime(p.duration_s)} · {p.chapters} ch · {p.clips} clips
+              </div>
             </div>
+            <button
+              className="project-del"
+              title="Delete project"
+              aria-label={`Delete ${baseName(p.source_path)}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onDeleteProject(p)
+              }}
+            >
+              <TrashIcon size={15} />
+            </button>
           </div>
         ))}
       </div>

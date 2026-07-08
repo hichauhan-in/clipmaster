@@ -11,11 +11,13 @@ WS   /ws/jobs/{id}               live ProgressEvent stream (history + updates)
 GET  /api/projects               list analysed projects in the workspace
 GET  /api/projects/{id}          the full analysis.json artifact
 GET  /api/projects/{id}/report   the Markdown report (text/markdown)
+DELETE /api/projects/{id}        remove a project's folder from the workspace
 """
 
 from __future__ import annotations
 
 import asyncio
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -384,5 +386,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return PlainTextResponse(
             render_markdown(AnalysisReport.load(path)), media_type="text/markdown"
         )
+
+    @app.delete("/api/projects/{project_id}", response_model=ActionResult)
+    def delete_project(project_id: str) -> ActionResult:
+        # Resolve and confirm the target is a direct child of the workspace so a
+        # crafted id (e.g. ".." or an absolute path) can never delete elsewhere.
+        workspace = settings.workspace_path.resolve()
+        project_dir = (settings.workspace_path / project_id).resolve()
+        if project_dir.parent != workspace or not project_dir.is_dir():
+            raise HTTPException(status_code=404, detail="Unknown project")
+        shutil.rmtree(project_dir)
+        logger.info("Deleted project %s", project_id)
+        return ActionResult(ok=True, message="Project deleted.")
 
     return app
