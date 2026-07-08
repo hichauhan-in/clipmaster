@@ -76,6 +76,9 @@ class ClipsConfig(BaseModel):
 
 class LoggingConfig(BaseModel):
     level: str = "INFO"
+    # Optional path to a log file or a directory (a clipmaster.log is created in
+    # a directory). Set from the desktop app's Diagnostics tab; null = console only.
+    file: str | None = None
 
 
 class Settings(BaseModel):
@@ -137,6 +140,8 @@ def _env_overrides() -> dict[str, Any]:
         overrides.setdefault("transcription", {})["device"] = val
     if (val := os.getenv("CLIPMASTER_LOG_LEVEL")):
         overrides.setdefault("logging", {})["level"] = val
+    if (val := os.getenv("CLIPMASTER_LOG_FILE")):
+        overrides.setdefault("logging", {})["file"] = val
     return overrides
 
 
@@ -148,3 +153,16 @@ def load_settings(config_path: str | os.PathLike[str] | None = None) -> Settings
         merged = _deep_merge(merged, _load_yaml(Path(config_path)))
     merged = _deep_merge(merged, _env_overrides())
     return Settings.model_validate(merged)
+
+
+def save_local_overrides(patch: dict[str, Any]) -> Path:
+    """Merge *patch* into ``config/local.yaml`` and persist it.
+
+    Used by the desktop app to remember choices (e.g. the active LLM model or the
+    log-file path) without touching the version-controlled ``default.yaml``.
+    """
+    merged = _deep_merge(_load_yaml(LOCAL_CONFIG_PATH), patch)
+    LOCAL_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with LOCAL_CONFIG_PATH.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(merged, handle, sort_keys=False, default_flow_style=False)
+    return LOCAL_CONFIG_PATH

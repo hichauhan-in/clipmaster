@@ -89,6 +89,20 @@ ipcMain.handle('dialog:openVideo', async () => {
 
 ipcMain.handle('shell:openPath', async (_e, path: string) => shell.openPath(path))
 
+ipcMain.handle('shell:openExternal', async (_e, url: string) => {
+  // Only allow http(s) links to be opened in the default browser.
+  if (/^https?:\/\//i.test(url)) await shell.openExternal(url)
+})
+
+ipcMain.handle('dialog:openFolder', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Select a folder for log files',
+    properties: ['openDirectory', 'createDirectory']
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+  return result.filePaths[0]
+})
+
 // --- Lifecycle ---------------------------------------------------------------
 app.whenReady().then(() => {
   startBackend()

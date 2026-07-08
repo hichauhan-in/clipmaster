@@ -139,6 +139,79 @@ export interface ProjectSummary {
   has_transcript: boolean
 }
 
+// --- Diagnostics tab --------------------------------------------------------
+export interface FixHint {
+  winget: string
+  url: string
+  hint: string
+}
+
+export interface DiagnosticsComponent {
+  name: string
+  category: string
+  ok: boolean
+  detail: string
+  version: string | null
+  fix: FixHint | null
+}
+
+export interface OllamaModel {
+  name: string
+  size_bytes: number | null
+  family: string | null
+  parameter_size: string | null
+}
+
+export interface OllamaStatus {
+  reachable: boolean
+  host: string
+  port: number | null
+  version: string | null
+  models: OllamaModel[]
+  selected_model: string
+  error: string | null
+}
+
+export interface PythonInfo {
+  version: string
+  executable: string
+}
+
+export interface LogInfo {
+  path: string | null
+  level: string
+}
+
+export interface DiagnosticsResponse {
+  version: string
+  workspace: string
+  python: PythonInfo
+  components: DiagnosticsComponent[]
+  ollama: OllamaStatus
+  log: LogInfo
+}
+
+export interface ActionResult {
+  ok: boolean
+  message: string
+}
+
+export interface PullStatus {
+  pull_id: string
+  model: string
+  status: string
+  percent: number
+  message: string
+  done: boolean
+  error: string | null
+}
+
+export interface LogsResponse {
+  path: string | null
+  level: string
+  lines: string[]
+}
+
 // --- Progress events (from the WebSocket) -----------------------------------
 export interface ProgressEvent {
   type: string // stage_start | progress | log | stage_end | error | ping | job_done | job_error

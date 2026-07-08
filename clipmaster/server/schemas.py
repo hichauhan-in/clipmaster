@@ -58,3 +58,90 @@ class ProbeResponse(BaseModel):
     fps: float | None = None
     audio_streams: int = 0
     chunk_count: int = 0
+
+
+# --- Diagnostics tab ---------------------------------------------------------
+class FixHint(BaseModel):
+    """How to install/repair a missing dependency (shown as UI actions)."""
+
+    winget: str = ""  # copy-paste winget command, if applicable
+    url: str = ""  # official download/docs page
+    hint: str = ""  # short human explanation
+
+
+class DiagnosticsComponent(BaseModel):
+    name: str
+    category: str = "general"  # media | python | llm
+    ok: bool
+    detail: str = ""
+    version: str | None = None
+    fix: FixHint | None = None  # present only when the component needs attention
+
+
+class OllamaModel(BaseModel):
+    name: str
+    size_bytes: int | None = None
+    family: str | None = None
+    parameter_size: str | None = None
+
+
+class OllamaStatus(BaseModel):
+    reachable: bool
+    host: str
+    port: int | None = None
+    version: str | None = None
+    models: list[OllamaModel] = Field(default_factory=list)
+    selected_model: str
+    error: str | None = None
+
+
+class PythonInfo(BaseModel):
+    version: str
+    executable: str
+
+
+class LogInfo(BaseModel):
+    path: str | None = None
+    level: str = "INFO"
+
+
+class DiagnosticsResponse(BaseModel):
+    version: str
+    workspace: str
+    python: PythonInfo
+    components: list[DiagnosticsComponent]
+    ollama: OllamaStatus
+    log: LogInfo
+
+
+class ActionResult(BaseModel):
+    ok: bool
+    message: str = ""
+
+
+class SelectModelRequest(BaseModel):
+    model: str
+
+
+class PullRequest(BaseModel):
+    model: str
+
+
+class PullStatus(BaseModel):
+    pull_id: str
+    model: str
+    status: str
+    percent: float = 0.0
+    message: str = ""
+    done: bool = False
+    error: str | None = None
+
+
+class LogPathRequest(BaseModel):
+    path: str
+
+
+class LogsResponse(BaseModel):
+    path: str | None = None
+    level: str = "INFO"
+    lines: list[str] = Field(default_factory=list)

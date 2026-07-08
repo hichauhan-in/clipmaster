@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import sys
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -27,14 +28,24 @@ from clipmaster.config import Settings, load_settings
 from clipmaster.logging_setup import get_logger, setup_logging
 from clipmaster.models import AnalysisReport
 from clipmaster.server.jobs import JOB_DONE, JOB_ERROR, JobManager
+from clipmaster.server.ollama_pull import PullManager, PullState
 from clipmaster.server.schemas import (
+    ActionResult,
     AnalyzeRequest,
     ComponentStatus,
+    DiagnosticsResponse,
     HealthResponse,
     JobRef,
     JobStatus,
+    LogInfo,
+    LogPathRequest,
+    LogsResponse,
     ProbeResponse,
     ProjectSummary,
+    PullRequest,
+    PullStatus,
+    PythonInfo,
+    SelectModelRequest,
 )
 from clipmaster.version import __version__
 
@@ -42,6 +53,18 @@ logger = get_logger("server.app")
 
 # How long the WebSocket waits between keepalive pings when a job is idle.
 _WS_IDLE_PING_SECONDS = 25.0
+
+
+def _pull_status(state: PullState) -> PullStatus:
+    return PullStatus(
+        pull_id=state.pull_id,
+        model=state.model,
+        status=state.status,
+        percent=state.percent,
+        message=state.message,
+        done=state.done,
+        error=state.error,
+    )
 
 
 def _check_binary(binary: str) -> ComponentStatus:
@@ -54,7 +77,7 @@ def _check_binary(binary: str) -> ComponentStatus:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
-    setup_logging(settings.logging.level)
+    setup_logging(settings.logging.level, settings.logging.file)
 
     app = FastAPI(title="ClipMaster", version=__version__)
     # Local single-user tool bound to loopback; permissive CORS is safe here and
@@ -67,8 +90,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     manager = JobManager(settings)
+    pulls = PullManager(settings.llm.host)
     app.state.settings = settings
     app.state.jobs = manager
+    app.state.pulls = pulls
 
     @app.on_event("shutdown")
     def _shutdown() -> None:  # pragma: no cover - lifecycle hook
@@ -128,6 +153,95 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "llm": {"model": settings.llm.model, "host": settings.llm.host},
             "clips": settings.clips.model_dump(),
         }
+
+    # --- Diagnostics ----------------------------------------------------------
+    @app.get("/api/diagnostics", response_model=DiagnosticsResponse)
+    def diagnostics() -> DiagnosticsResponse:
+        from clipmaster.logging_setup import current_log_file
+        from clipmaster.server.diagnostics import (
+            collect_components,
+            ollama_component,
+            ollama_status,
+        )
+
+        oll = ollama_status(settings)
+        components = collect_components(settings)
+        components.append(ollama_component(oll))
+        log_path = current_log_file()
+        return DiagnosticsResponse(
+            version=__version__,
+            workspace=str(settings.workspace_path),
+            python=PythonInfo(version=sys.version.split()[0], executable=sys.executable),
+            components=components,
+            ollama=oll,
+            log=LogInfo(
+                path=str(log_path) if log_path else None,
+                level=settings.logging.level,
+            ),
+        )
+
+    @app.post("/api/ollama/start", response_model=ActionResult)
+    def ollama_start() -> ActionResult:
+        from clipmaster.server.diagnostics import start_ollama
+
+        ok, message = start_ollama(settings)
+        return ActionResult(ok=ok, message=message)
+
+    @app.post("/api/settings/model", response_model=ActionResult)
+    def select_model(req: SelectModelRequest) -> ActionResult:
+        from clipmaster.config import save_local_overrides
+
+        model = req.model.strip()
+        if not model:
+            raise HTTPException(status_code=400, detail="Model name is required")
+        settings.llm.model = model
+        save_local_overrides({"llm": {"model": model}})
+        logger.info("Active LLM model set to %s", model)
+        return ActionResult(ok=True, message=f"Now using {model} for analysis.")
+
+    @app.post("/api/ollama/pull", response_model=PullStatus)
+    def ollama_pull(req: PullRequest) -> PullStatus:
+        model = req.model.strip()
+        if not model:
+            raise HTTPException(status_code=400, detail="Model name is required")
+        return _pull_status(pulls.start(model))
+
+    @app.get("/api/ollama/pull/{pull_id}", response_model=PullStatus)
+    def ollama_pull_status(pull_id: str) -> PullStatus:
+        state = pulls.get(pull_id)
+        if state is None:
+            raise HTTPException(status_code=404, detail="Unknown pull")
+        return _pull_status(state)
+
+    # --- Logs -----------------------------------------------------------------
+    @app.get("/api/logs", response_model=LogsResponse)
+    def get_logs(limit: int = 200) -> LogsResponse:
+        from clipmaster.logging_setup import current_log_file, recent_log_lines
+
+        log_path = current_log_file()
+        return LogsResponse(
+            path=str(log_path) if log_path else None,
+            level=settings.logging.level,
+            lines=recent_log_lines(max(1, min(limit, 1000))),
+        )
+
+    @app.post("/api/logs/path", response_model=ActionResult)
+    def set_log_path(req: LogPathRequest) -> ActionResult:
+        from clipmaster.config import save_local_overrides
+        from clipmaster.logging_setup import configure_file_logging
+
+        path = req.path.strip()
+        if not path:
+            raise HTTPException(status_code=400, detail="A folder or file path is required")
+        try:
+            resolved = configure_file_logging(path)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=400, detail=f"Cannot write logs to that location: {exc}"
+            ) from exc
+        settings.logging.file = str(resolved)
+        save_local_overrides({"logging": {"file": str(resolved)}})
+        return ActionResult(ok=True, message=f"Logging to {resolved}")
 
     # --- Probe ----------------------------------------------------------------
     @app.post("/api/probe", response_model=ProbeResponse)

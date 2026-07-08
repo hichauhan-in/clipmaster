@@ -403,6 +403,24 @@ Useful environment variables for the desktop app:
 | `CLIPMASTER_PYTHON`       | Python executable used for the sidecar         |
 | `CLIPMASTER_SERVER_HOST`  | API bind host (default `127.0.0.1`)            |
 | `CLIPMASTER_SERVER_PORT`  | API port (default `8756`)                      |
+| `CLIPMASTER_LOG_FILE`     | Path (file or folder) for a persistent log file |
+
+### Diagnostics tab
+
+The app ships with a **Diagnostics** tab (left sidebar) so it can run
+standalone — no terminal needed to get dependencies working:
+
+- **Dependencies** — live status for ffmpeg, ffprobe and faster-whisper. Missing
+  items show a copy-paste `winget` command and a link to the official download
+  page (nothing is installed silently).
+- **Ollama** — shows whether the local server is reachable and on which port, a
+  **Start Ollama** button if it's down, the list of installed models with a
+  one-click **Use** to pick the active model, and a **Pull** box with live
+  download progress.
+- **Logs & issues** — choose a folder where a rotating log file is written, open
+  that folder, and watch a live tail of recent log lines (errors highlighted).
+
+Model and log-path choices are remembered in `config/local.yaml`.
 
 ### API surface
 
@@ -416,6 +434,13 @@ Useful environment variables for the desktop app:
 | GET    | `/api/projects`               | list analysed projects                   |
 | GET    | `/api/projects/{id}`          | full `analysis.json`                     |
 | GET    | `/api/projects/{id}/report`   | Markdown report                          |
+| GET    | `/api/diagnostics`            | dependency + Ollama + log status         |
+| POST   | `/api/ollama/start`           | start `ollama serve` if not running      |
+| POST   | `/api/settings/model`         | set the active LLM model                 |
+| POST   | `/api/ollama/pull`            | pull a model → `{pull_id}`               |
+| GET    | `/api/ollama/pull/{id}`       | model pull progress                      |
+| GET    | `/api/logs`                   | recent log lines + active log path       |
+| POST   | `/api/logs/path`              | set the log file/folder                  |
 
 > **Node.js 18+** is required to build/run the desktop app (`npm`). It is only
 > needed on the machine that runs the UI, not for the Python core or CLI.
@@ -452,7 +477,9 @@ Built incrementally; each milestone consumes the analysis artifact.
 - [x] **M3 — Desktop editor shell (Electron + React):** dark, minimal UI —
   Home (select + probe), Processing (live stage/log), Results (summary,
   timeline, chapters, clips, transcript) with per-phase action prompts
-  ("Summarise / Clean up / Make shorts / Edit").
+  ("Summarise / Clean up / Make shorts / Edit"). Includes a **Diagnostics** tab
+  to detect/guide dependency setup, start Ollama, pick/pull models, and
+  configure a log file.
 - [ ] **M4 — Cleanup renderer:** turn `cleanup_keep_spans` into a trimmed video
   (remove silence / filler / off-topic), with a review-before-render step.
 - [ ] **M5 — Shorts generator:** render `clip_candidates` to ≤ N-second shorts,

@@ -1,8 +1,12 @@
 import type {
+  ActionResult,
   AnalysisReport,
+  DiagnosticsResponse,
   HealthResponse,
+  LogsResponse,
   ProbeResponse,
-  ProjectSummary
+  ProjectSummary,
+  PullStatus
 } from '../types'
 
 // The backend URL is provided by the Electron main process. We resolve it once
@@ -49,6 +53,33 @@ export const client = {
   projects: () => api<ProjectSummary[]>('/api/projects'),
 
   project: (id: string) => api<AnalysisReport>(`/api/projects/${id}`),
+
+  // --- Diagnostics ----------------------------------------------------------
+  diagnostics: () => api<DiagnosticsResponse>('/api/diagnostics'),
+
+  startOllama: () => api<ActionResult>('/api/ollama/start', { method: 'POST' }),
+
+  selectModel: (model: string) =>
+    api<ActionResult>('/api/settings/model', {
+      method: 'POST',
+      body: JSON.stringify({ model })
+    }),
+
+  pullModel: (model: string) =>
+    api<PullStatus>('/api/ollama/pull', {
+      method: 'POST',
+      body: JSON.stringify({ model })
+    }),
+
+  pullStatus: (pullId: string) => api<PullStatus>(`/api/ollama/pull/${pullId}`),
+
+  logs: (limit = 200) => api<LogsResponse>(`/api/logs?limit=${limit}`),
+
+  setLogPath: (path: string) =>
+    api<ActionResult>('/api/logs/path', {
+      method: 'POST',
+      body: JSON.stringify({ path })
+    }),
 
   async wsUrl(jobId: string): Promise<string> {
     const base = await backendUrl()

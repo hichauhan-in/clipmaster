@@ -3,7 +3,7 @@ import { baseName, formatTime } from '../util'
 
 interface Props {
   view: string
-  onNavigate: (view: 'home') => void
+  onNavigate: (view: 'home' | 'diagnostics') => void
   health: HealthResponse | null
   projects: ProjectSummary[]
   activeProjectId: string | null
@@ -18,6 +18,7 @@ export function Sidebar({
   activeProjectId,
   onOpenProject
 }: Props): JSX.Element {
+  const hasIssue = health ? health.components.some((c) => !c.ok) : false
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -29,8 +30,15 @@ export function Sidebar({
       </div>
 
       <div className="nav">
-        <button className={view === 'home' ? 'active' : ''} onClick={() => onNavigate('home')}>
+        <button className={view === 'diagnostics' ? '' : 'active'} onClick={() => onNavigate('home')}>
           + New analysis
+        </button>
+        <button
+          className={view === 'diagnostics' ? 'active' : ''}
+          onClick={() => onNavigate('diagnostics')}
+        >
+          Diagnostics
+          {hasIssue && <span className="nav-alert" title="Something needs attention" />}
         </button>
       </div>
 

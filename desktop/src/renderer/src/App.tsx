@@ -4,9 +4,10 @@ import { Sidebar } from './components/Sidebar'
 import { HomeView } from './components/HomeView'
 import { ProcessingView } from './components/ProcessingView'
 import { ResultsView } from './components/ResultsView'
+import { DiagnosticsView } from './components/DiagnosticsView'
 import type { AnalysisReport, HealthResponse, ProbeResponse, ProjectSummary } from './types'
 
-type View = 'home' | 'processing' | 'results'
+type View = 'home' | 'processing' | 'results' | 'diagnostics'
 
 export default function App(): JSX.Element {
   const [view, setView] = useState<View>('home')
@@ -133,11 +134,19 @@ export default function App(): JSX.Element {
     setView('home')
   }, [])
 
+  const navigate = useCallback(
+    (target: 'home' | 'diagnostics') => {
+      if (target === 'diagnostics') setView('diagnostics')
+      else goHome()
+    },
+    [goHome]
+  )
+
   return (
     <div className="app">
       <Sidebar
         view={view}
-        onNavigate={goHome}
+        onNavigate={navigate}
         health={health}
         projects={projects}
         activeProjectId={activeProjectId}
@@ -154,6 +163,7 @@ export default function App(): JSX.Element {
             starting={starting}
           />
         )}
+        {view === 'diagnostics' && <DiagnosticsView onNotify={notify} />}
         {view === 'processing' && jobId && (
           <ProcessingView
             jobId={jobId}

@@ -94,3 +94,6 @@ clips:
 # ------------------------------------------------------------------------------------
 logging:
   level: "INFO"                  # DEBUG | INFO | WARNING | ERROR
+  # Optional log file or directory. null = console only. The desktop app's
+  # Diagnostics tab writes the chosen path here (into config/local.yaml).
+  file: null
