@@ -153,7 +153,7 @@ export function DiagnosticsView({ onNotify }: Props): JSX.Element {
     <>
       <div className="header">
         <div>
-          <h2>Diagnostics</h2>
+          <h2>Settings</h2>
           <div className="sub">
             Dependencies, local AI models and logs — everything the app needs to run.
           </div>

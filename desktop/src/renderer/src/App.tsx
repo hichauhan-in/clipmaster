@@ -153,28 +153,30 @@ export default function App(): JSX.Element {
         onOpenProject={loadProject}
       />
       <main className="main">
-        {view === 'home' && (
-          <HomeView
-            selectedFile={selectedFile}
-            probe={probe}
-            probing={probing}
-            onPickFile={pickFile}
-            onStart={startAnalyze}
-            starting={starting}
-          />
-        )}
-        {view === 'diagnostics' && <DiagnosticsView onNotify={notify} />}
-        {view === 'processing' && jobId && (
-          <ProcessingView
-            jobId={jobId}
-            filePath={jobFilePath}
-            onDone={onJobDone}
-            onBack={goHome}
-          />
-        )}
-        {view === 'results' && report && (
-          <ResultsView report={report} workspace={health?.workspace ?? null} onNotify={notify} />
-        )}
+        <div className="main-inner">
+          {view === 'home' && (
+            <HomeView
+              selectedFile={selectedFile}
+              probe={probe}
+              probing={probing}
+              onPickFile={pickFile}
+              onStart={startAnalyze}
+              starting={starting}
+            />
+          )}
+          {view === 'diagnostics' && <DiagnosticsView onNotify={notify} />}
+          {view === 'processing' && jobId && (
+            <ProcessingView
+              jobId={jobId}
+              filePath={jobFilePath}
+              onDone={onJobDone}
+              onBack={goHome}
+            />
+          )}
+          {view === 'results' && report && (
+            <ResultsView report={report} workspace={health?.workspace ?? null} onNotify={notify} />
+          )}
+        </div>
       </main>
 
       {toast && (

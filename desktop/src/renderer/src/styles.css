@@ -116,6 +116,9 @@ code,
 }
 .nav button {
   width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   text-align: left;
   background: transparent;
   border: none;
@@ -123,9 +126,17 @@ code,
   border-radius: var(--radius-sm);
   color: var(--text-dim);
 }
+.nav .plus {
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-faint);
+}
 .nav button.active {
   background: var(--accent-dim);
   color: var(--text);
+}
+.nav button.active .plus {
+  color: var(--accent);
 }
 .nav button:hover:not(.active) {
   background: var(--bg-elev-2);
@@ -153,6 +164,10 @@ code,
 .project-item:hover {
   background: var(--bg-elev-2);
 }
+.project-item.active {
+  background: var(--bg-elev-2);
+  border-color: var(--border-strong);
+}
 .project-item .name {
   font-size: 12.5px;
   white-space: nowrap;
@@ -164,9 +179,55 @@ code,
   color: var(--text-faint);
 }
 
+/* Sidebar footer (Settings entry) */
+.sidebar-footer {
+  border-top: 1px solid var(--border);
+  padding: 10px;
+}
+.settings-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+}
+.settings-btn:hover:not(:disabled) {
+  background: var(--bg-elev-2);
+  border-color: var(--border);
+}
+.settings-btn.active {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+.settings-btn svg {
+  flex-shrink: 0;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.status-dot.ok {
+  background: var(--good);
+  box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.15);
+}
+.status-dot.warn {
+  background: var(--warn);
+  box-shadow: 0 0 0 3px rgba(210, 153, 34, 0.15);
+}
+
 .main {
   overflow-y: auto;
-  padding: 26px 34px;
+  padding: 28px 32px;
+}
+.main-inner {
+  max-width: 940px;
+  margin: 0 auto;
 }
 
 .header {

@@ -12,6 +12,7 @@ help, tests, the report tooling) works without the heavy ML dependency installed
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from clipmaster.logging_setup import get_logger
@@ -31,6 +32,17 @@ class FasterWhisperTranscriber(Transcriber):
     def _ensure_model(self):
         if self._model is not None:
             return self._model
+
+        # Keep transcription fully local and quiet. These must be set BEFORE
+        # huggingface_hub is imported (by faster_whisper) to take effect:
+        #   * no anonymous usage telemetry leaves the machine;
+        #   * silence the harmless Windows symlink-cache warning.
+        # The model weights are still downloaded ONCE into the local HF cache;
+        # set HF_HUB_OFFLINE=1 yourself to forbid all network access after that.
+        # Every value uses setdefault so a user's own env vars win.
+        os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+        os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+
         try:
             from faster_whisper import WhisperModel
         except ImportError as exc:  # pragma: no cover - environment dependent

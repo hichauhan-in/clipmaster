@@ -29,6 +29,7 @@ footage never leaves the box.
 - [Configuration reference](#configuration-reference)
 - [Setup on the target machine (Windows 11 · 7900 XT)](#setup-on-the-target-machine-windows-11--7900-xt)
 - [AMD GPU acceleration](#amd-gpu-acceleration)
+- [Privacy & network use](#privacy--network-use)
 - [Usage (CLI)](#usage-cli)
 - [Desktop app & API server](#desktop-app--api-server)
 - [Development on the code-generation machine](#development-on-the-code-generation-machine)
@@ -330,6 +331,34 @@ keeps setup simple and still uses the GPU for the heavy LLM work.
 
 ---
 
+## Privacy & network use
+
+ClipMaster is **local-first**: your video, audio, transcript and analysis never
+leave the machine. All processing (ffmpeg, Whisper transcription, Ollama LLM) runs
+on your own hardware.
+
+The **only** outbound network access is a **one-time model download**:
+
+- The first time you transcribe, `faster-whisper` downloads the Whisper weights
+  (e.g. `Systran/faster-whisper-small`) from Hugging Face **into** the local cache
+  at `~/.cache/huggingface`. This is a download, not an upload of your data.
+- After that, transcription works **fully offline** from cache.
+
+On that first download you may see two harmless warnings:
+
+| Warning | Meaning | Action |
+| --- | --- | --- |
+| *"unauthenticated requests to the HF Hub… set a HF_TOKEN"* | Model downloaded anonymously (a rate-limit notice, not an error). | None — anonymous is fine. |
+| *"symlinks… your machine does not support them"* | Windows without Developer Mode caches model files as copies instead of symlinks (uses a little more disk). | None, or enable Windows Developer Mode. |
+
+To keep things quiet and telemetry-free, ClipMaster sets
+`HF_HUB_DISABLE_TELEMETRY=1` and `HF_HUB_DISABLE_SYMLINKS_WARNING=1` by default
+before loading the model (you can override them). For a **strictly offline**
+machine, pre-download the model once, then set `HF_HUB_OFFLINE=1` to forbid all
+network access.
+
+---
+
 ## Usage (CLI)
 
 ```powershell
@@ -405,10 +434,11 @@ Useful environment variables for the desktop app:
 | `CLIPMASTER_SERVER_PORT`  | API port (default `8756`)                      |
 | `CLIPMASTER_LOG_FILE`     | Path (file or folder) for a persistent log file |
 
-### Diagnostics tab
+### Settings
 
-The app ships with a **Diagnostics** tab (left sidebar) so it can run
-standalone — no terminal needed to get dependencies working:
+The app ships with a **Settings** panel (gear icon at the bottom of the left
+sidebar) so it can run standalone — no terminal needed to get dependencies
+working:
 
 - **Dependencies** — live status for ffmpeg, ffprobe and faster-whisper. Missing
   items show a copy-paste `winget` command and a link to the official download
@@ -477,7 +507,7 @@ Built incrementally; each milestone consumes the analysis artifact.
 - [x] **M3 — Desktop editor shell (Electron + React):** dark, minimal UI —
   Home (select + probe), Processing (live stage/log), Results (summary,
   timeline, chapters, clips, transcript) with per-phase action prompts
-  ("Summarise / Clean up / Make shorts / Edit"). Includes a **Diagnostics** tab
+  ("Summarise / Clean up / Make shorts / Edit"). Includes a **Settings** panel
   to detect/guide dependency setup, start Ollama, pick/pull models, and
   configure a log file.
 - [ ] **M4 — Cleanup renderer:** turn `cleanup_keep_spans` into a trimmed video
