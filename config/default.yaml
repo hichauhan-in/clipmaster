@@ -53,8 +53,8 @@ transcription:
 llm:
   host: "http://localhost:11434"
   model: "llama3.1:8b"           # any chat model you've pulled in Ollama
-  # Vision model for keyframe understanding (optional, later milestone).
-  vision_model: "llava:13b"
+  # Vision model for on-screen keyframe understanding (slides, demos, code, labs).
+  vision_model: "qwen2.5vl:7b"
   temperature: 0.2
   # Max transcript characters handed to the model in a single analysis call.
   # Chunks larger than this are further windowed internally.
@@ -80,6 +80,32 @@ analysis:
   # A segment whose importance score (0..1) is below this is suggested for removal
   # in the cleanup edit-decision-list.
   keep_importance_threshold: 0.35
+
+  # Multi-factor scoring. The transcript is the primary signal (~60%), complemented
+  # by audio delivery and on-screen visual content. Weights are relative and are
+  # renormalised when a signal is unavailable.
+  weights:
+    transcript: 0.6
+    audio: 0.2
+    visual: 0.2
+  audio_enabled: true            # loudness / speech-rate / pause DSP (needs numpy)
+  visual_enabled: true           # keyframe understanding via the vision model
+
+  # Visual sampling: at least one keyframe every N seconds plus each scene change,
+  # capped at visual_max_frames vision-model calls to bound processing time.
+  visual_sample_seconds: 25.0
+  visual_max_frames: 40
+  visual_scene_threshold: 0.4    # ffmpeg scene-change sensitivity (0..1)
+
+  # On-screen teaching content is never dropped for lack of speech: these kinds get
+  # an importance floor so cleanup keeps presentations, demos, code and lab footage.
+  visual_floor_importance: 0.6
+  visual_informative_kinds:
+    - "presentation"
+    - "screen_demo"
+    - "code_terminal"
+    - "lab_hardware"
+    - "diagram_chart"
 
 # ------------------------------------------------------------------------------------
 # Shorts / clip generation defaults

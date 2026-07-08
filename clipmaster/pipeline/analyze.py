@@ -22,7 +22,9 @@ import re
 import time
 from pathlib import Path
 
+from clipmaster.analysis.audio_features import analyze_audio
 from clipmaster.analysis.transcript_analyzer import analyze_transcript
+from clipmaster.analysis.visual_features import analyze_visual
 from clipmaster.config import Settings
 from clipmaster.events import EventBus, Stage, default_bus
 from clipmaster.logging_setup import get_logger
@@ -188,6 +190,39 @@ def analyze_video(
         )
     bus.stage_end(Stage.SILENCE, f"{len(silences)} silent span(s)")
 
+    # 4b) Audio delivery features (loudness / pace / pauses) --------------------
+    audio_features = None
+    if settings.analysis.audio_enabled and media.has_audio and transcript.segments:
+        bus.stage_start(Stage.AUDIO_ANALYSIS, "Analyzing audio delivery")
+        audio_features = analyze_audio(
+            source, transcript, settings, project_dir=project_dir
+        )
+        if audio_features is None:
+            warnings.append("Audio feature analysis unavailable (numpy missing?).")
+        bus.stage_end(
+            Stage.AUDIO_ANALYSIS,
+            f"{len(audio_features.segments) if audio_features else 0} segment(s)",
+        )
+
+    # 4c) Visual features (on-screen content via the vision model) -------------
+    visual_features = None
+    if settings.analysis.visual_enabled and media.video is not None and not skip_analysis:
+        bus.stage_start(Stage.VISUAL_ANALYSIS, "Analyzing on-screen content")
+
+        def _on_visual(fraction: float, message: str) -> None:
+            bus.progress(Stage.VISUAL_ANALYSIS, fraction, message)
+
+        visual_features = analyze_visual(
+            source, media, settings, project_dir=project_dir, progress=_on_visual
+        )
+        n_frames = len(visual_features.keyframes) if visual_features else 0
+        if visual_features is not None and n_frames == 0:
+            warnings.append(
+                f"Visual analysis limited: vision model '{settings.llm.vision_model}' "
+                "returned no keyframes (not installed or unreachable?)."
+            )
+        bus.stage_end(Stage.VISUAL_ANALYSIS, f"{n_frames} keyframe(s)")
+
     # 5) Analysis --------------------------------------------------------------
     analysis: dict = {}
     if not skip_analysis and transcript.segments:
@@ -202,6 +237,8 @@ def analyze_video(
             settings.llm,
             settings.analysis,
             progress=_on_progress,
+            audio_features=audio_features,
+            visual_features=visual_features,
         )
         warnings.extend(analysis.pop("warnings", []))
         bus.stage_end(Stage.ANALYZE, f"{len(analysis.get('chapters', []))} chapter(s)")
@@ -217,8 +254,11 @@ def analyze_video(
         chunk_plan=plan,
         transcript=transcript,
         silences=silences,
+        audio_features=audio_features,
+        visual_features=visual_features,
         transcription_model=f"{settings.transcription.provider}:{settings.transcription.model}",
         llm_model=settings.llm.model if analysis else "",
+        vision_model=settings.llm.vision_model if visual_features else "",
         warnings=warnings,
         **analysis,
     )

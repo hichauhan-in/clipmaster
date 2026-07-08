@@ -57,15 +57,49 @@ class TranscriptionConfig(BaseModel):
 class LLMConfig(BaseModel):
     host: str = "http://localhost:11434"
     model: str = "llama3.1:8b"
-    vision_model: str = "llava:13b"
+    vision_model: str = "qwen2.5vl:7b"
     temperature: float = 0.2
     max_input_chars: int = 12000
     request_timeout_seconds: float = 300.0
 
 
+class SignalWeights(BaseModel):
+    """Relative weight of each analysis signal when fusing segment importance."""
+
+    transcript: float = 0.6
+    audio: float = 0.2
+    visual: float = 0.2
+
+
 class AnalysisConfig(BaseModel):
     filler_words: list[str] = Field(default_factory=list)
     keep_importance_threshold: float = 0.35
+
+    # Multi-factor analysis: transcript is the primary signal, complemented by
+    # audio delivery (loudness/pace) and on-screen visual content.
+    weights: SignalWeights = Field(default_factory=SignalWeights)
+    audio_enabled: bool = True
+    visual_enabled: bool = True
+
+    # Visual sampling: take at least one keyframe every N seconds plus every
+    # detected scene change, capped at ``visual_max_frames`` vision-model calls.
+    visual_sample_seconds: float = 25.0
+    visual_max_frames: int = 40
+    visual_scene_threshold: float = 0.4
+
+    # On-screen teaching content (slides, demos, code, labs, diagrams) must never
+    # be dropped just because speech is sparse: these kinds get an importance
+    # floor so cleanup keeps them.
+    visual_floor_importance: float = 0.6
+    visual_informative_kinds: list[str] = Field(
+        default_factory=lambda: [
+            "presentation",
+            "screen_demo",
+            "code_terminal",
+            "lab_hardware",
+            "diagram_chart",
+        ]
+    )
 
 
 class ClipsConfig(BaseModel):

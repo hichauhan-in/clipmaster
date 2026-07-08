@@ -179,32 +179,33 @@ code,
   color: var(--text-faint);
 }
 
-/* Sidebar footer (Settings entry) */
+/* Sidebar footer (Settings — gear icon only) */
 .sidebar-footer {
   border-top: 1px solid var(--border);
-  padding: 10px;
-}
-.settings-btn {
-  width: 100%;
+  padding: 10px 12px;
   display: flex;
+  justify-content: flex-start;
+}
+.settings-icon-btn {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
   background: transparent;
   border: 1px solid transparent;
-  color: var(--text-dim);
-  padding: 9px 10px;
   border-radius: var(--radius-sm);
+  color: var(--text-dim);
 }
-.settings-btn:hover:not(:disabled) {
+.settings-icon-btn:hover {
   background: var(--bg-elev-2);
   border-color: var(--border);
-}
-.settings-btn.active {
-  background: var(--accent-dim);
   color: var(--text);
 }
-.settings-btn svg {
-  flex-shrink: 0;
+.settings-icon-btn.active {
+  background: var(--accent-dim);
+  color: var(--text);
 }
 .status-dot {
   width: 8px;
@@ -212,13 +213,107 @@ code,
   border-radius: 50%;
   background: var(--text-faint);
 }
+.settings-icon-btn .status-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--bg-elev);
+}
 .status-dot.ok {
   background: var(--good);
-  box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.15);
 }
 .status-dot.warn {
   background: var(--warn);
-  box-shadow: 0 0 0 3px rgba(210, 153, 34, 0.15);
+}
+
+/* --- Modal ---------------------------------------------------------------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 200;
+  animation: modalFade 0.14s ease;
+}
+.modal-panel {
+  width: min(760px, 94vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  animation: modalPop 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.modal-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.modal-body {
+  overflow-y: auto;
+  padding: 18px;
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+}
+.icon-btn:hover {
+  background: var(--bg-elev-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+.settings-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.settings-sub {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+@keyframes modalFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes modalPop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .main {

@@ -6,7 +6,7 @@ interface IconProps {
   className?: string
 }
 
-/** ClipMaster app mark: a rounded gradient tile with a play triangle. */
+/** ClipMaster app mark: a minimal black tile with a white play triangle. */
 export function LogoMark({ size = 28, className }: IconProps): JSX.Element {
   return (
     <svg
@@ -17,17 +17,39 @@ export function LogoMark({ size = 28, className }: IconProps): JSX.Element {
       className={className}
       aria-hidden="true"
     >
-      <defs>
-        <linearGradient id="cm-logo" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#4f8cff" />
-          <stop offset="1" stopColor="#a371f7" />
-        </linearGradient>
-      </defs>
-      <rect width="32" height="32" rx="8" fill="url(#cm-logo)" />
+      <rect
+        x="0.5"
+        y="0.5"
+        width="31"
+        height="31"
+        rx="8"
+        fill="#0d0d0d"
+        stroke="rgba(255, 255, 255, 0.16)"
+      />
       <path
         d="M13 10.6v10.8a1 1 0 0 0 1.52.86l8.7-5.4a1 1 0 0 0 0-1.72l-8.7-5.4A1 1 0 0 0 13 10.6Z"
         fill="#fff"
       />
+    </svg>
+  )
+}
+
+/** Close / dismiss (X). */
+export function CloseIcon({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M18 6 6 18M6 6l12 12" />
     </svg>
   )
 }

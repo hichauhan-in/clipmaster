@@ -151,13 +151,11 @@ export function DiagnosticsView({ onNotify }: Props): JSX.Element {
 
   return (
     <>
-      <div className="header">
-        <div>
-          <h2>Settings</h2>
-          <div className="sub">
-            Dependencies, local AI models and logs — everything the app needs to run.
-          </div>
-        </div>
+      <div className="settings-toolbar">
+        <span className="settings-sub">
+          Dependencies, local AI models and logs — everything the app needs to run.
+        </span>
+        <span className="spacer" />
         <button onClick={refresh} disabled={loading}>
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>

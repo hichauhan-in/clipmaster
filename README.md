@@ -102,8 +102,12 @@ flowchart TD
   implementation. New backends (e.g. whisper.cpp/Vulkan for AMD) drop in behind
   the same interface.
 - **`analysis/`** — a small Ollama HTTP client plus a `TranscriptAnalyzer` that
-  fuses deterministic heuristics with LLM understanding, degrading gracefully to
-  heuristics-only if Ollama is offline.
+  fuses **three signals** into one importance score: the transcript (LLM +
+  deterministic heuristics, ~60%), audio delivery (loudness / pace / pauses),
+  and on-screen visual content (a local vision model describing keyframes). It
+  degrades gracefully — heuristics-only if Ollama is offline — and on-screen
+  teaching content (slides, demos, code, labs, diagrams) is never dropped just
+  because speech is sparse.
 - **`pipeline/`** — composes the layers into the end-to-end analysis workflow.
 - **`report/`** — renders the artifact into readable Markdown.
 
@@ -118,6 +122,7 @@ sequenceDiagram
     participant F as ffmpeg/ffprobe
     participant W as Whisper
     participant L as Ollama LLM
+    participant V as Vision model
 
     U->>P: analyze(video)
     P->>F: probe (duration, res, streams)
@@ -129,9 +134,13 @@ sequenceDiagram
         P->>P: offset to absolute time + de-dupe overlap
     end
     P->>F: silencedetect (whole file)
+    P->>P: audio features (loudness / pace / pauses)
+    P->>F: scene detect + sample keyframes
+    P->>V: describe keyframes (kind + informativeness)
+    V-->>P: on-screen content per frame
     P->>L: analyze windows → chapters/clips/off-topic/Q&A
     L-->>P: structured JSON per window
-    P->>P: merge + heuristic segment scoring
+    P->>P: fuse transcript + audio + visual → importance
     P-->>U: analysis.json + analysis.md
 ```
 
@@ -175,8 +184,10 @@ clipmaster/
 │   │   ├── base.py           # Transcriber interface + factory
 │   │   └── faster_whisper_provider.py
 │   ├── analysis/
-│   │   ├── ollama_client.py  # local Ollama HTTP client (JSON mode)
-│   │   └── transcript_analyzer.py  # heuristics + LLM understanding
+│   │   ├── ollama_client.py  # local Ollama HTTP client (JSON + vision)
+│   │   ├── audio_features.py # per-segment loudness / pace / pauses (numpy)
+│   │   ├── visual_features.py# scene changes + vision-model keyframe analysis
+│   │   └── transcript_analyzer.py  # heuristics + LLM + signal fusion
 │   ├── pipeline/
 │   │   └── analyze.py        # ingest → transcribe → analyze → report
 │   ├── report/
@@ -202,6 +213,7 @@ At runtime each video becomes a **project folder** under `workspace/`:
 ```
 workspace/<slug>-<hash8>/
 ├── audio/chunk_000.wav …     # extracted per-chunk audio
+├── frames/frame_000.jpg …    # keyframes sampled for the vision model
 ├── analysis.json             # the machine-readable artifact (source of truth)
 └── analysis.md               # human-readable report
 ```
@@ -219,6 +231,8 @@ is the contract between analysis and every action. Key fields:
 | `chunk_plan`          | how the video was split for processing                         |
 | `transcript`          | language + timestamped `segments` (with word timings)          |
 | `silences`            | detected silent spans (`start`/`end`)                          |
+| `audio_features`      | per-segment loudness / speech-rate / pause / energy metrics    |
+| `visual_features`     | scene changes + vision-model keyframes (`kind`, `informativeness`) |
 | `summary`, `keywords` | whole-video overview                                           |
 | `chapters`            | coherent topical sections (`title`, `start`, `end`, `summary`) |
 | `segment_analyses`    | per-segment verdict: `kind`, `importance`, `keep`, `reason`    |
@@ -227,9 +241,13 @@ is the contract between analysis and every action. Key fields:
 | `warnings`            | e.g. "Ollama unavailable; heuristic analysis only"             |
 
 `segment_analyses[*].kind` is one of `on_topic`, `off_topic`, `qa`, `filler`,
-`intro`, `outro`, `transition`. `importance` is `0..1`; a segment is marked to
-keep when `importance >= analysis.keep_importance_threshold` and it isn't filler
-or off-topic.
+`intro`, `outro`, `transition`. `importance` is `0..1` and **fuses three
+signals** — transcript (60%), audio delivery (20%) and on-screen visual content
+(20%), re-weighted when a signal is missing; each segment also records its
+`transcript_importance`, `audio_score`, `visual_score` and `visual_kind`. A
+segment is kept when `importance >= analysis.keep_importance_threshold` and it
+isn't filler/off-topic — **or** when the frame shows informative on-screen content
+(slides, demos, code, labs, diagrams), which is always kept regardless of speech.
 
 ---
 
@@ -289,8 +307,8 @@ ffmpeg -version ; ffprobe -version
 Pull the models named in your config (adjust as you like):
 
 ```powershell
-ollama pull llama3.1:8b      # analysis LLM
-ollama pull llava:13b        # vision model (used in a later milestone)
+ollama pull llama3.1:8b      # analysis LLM (transcript understanding)
+ollama pull qwen2.5vl:7b     # vision model (on-screen keyframe analysis)
 ollama serve                 # if it isn't already running as a service
 ```
 
@@ -501,7 +519,8 @@ heuristics, response parsing, report rendering) need **no GPU, ffmpeg or Ollama*
 Built incrementally; each milestone consumes the analysis artifact.
 
 - [x] **M1 — Analysis foundation:** ingest, even chunking, local transcription,
-  silence detection, LLM + heuristic analysis, JSON/Markdown report, CLI.
+  silence detection, multi-factor analysis (transcript + audio + visual),
+  JSON/Markdown report, CLI.
 - [x] **M2 — HTTP server:** FastAPI + WebSocket streaming of the event bus, so
   the desktop app can drive the pipeline and show live status.
 - [x] **M3 — Desktop editor shell (Electron + React):** dark, minimal UI —
@@ -516,8 +535,10 @@ Built incrementally; each milestone consumes the analysis artifact.
   with reframing and burned-in captions.
 - [ ] **M6 — Editing & templates:** intro/outro banners from files, described
   text overlays, and reusable templates that remember placement.
-- [ ] **M7 — Visual analysis:** keyframe extraction + local vision model for
-  slide/scene understanding to enrich chapters and clip selection.
+- [x] **M7 — Visual & audio analysis:** scene detection + keyframe sampling with
+  a local vision model (`qwen2.5vl:7b`) for on-screen content understanding, plus
+  audio-delivery DSP, fused with the transcript (60/20/20) so slides, demos, code
+  and labs are scored as important and never dropped for lack of speech.
 
 ---
 

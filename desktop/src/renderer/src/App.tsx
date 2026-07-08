@@ -5,12 +5,15 @@ import { HomeView } from './components/HomeView'
 import { ProcessingView } from './components/ProcessingView'
 import { ResultsView } from './components/ResultsView'
 import { DiagnosticsView } from './components/DiagnosticsView'
+import { Modal } from './components/Modal'
+import { GearIcon } from './components/icons'
 import type { AnalysisReport, HealthResponse, ProbeResponse, ProjectSummary } from './types'
 
-type View = 'home' | 'processing' | 'results' | 'diagnostics'
+type View = 'home' | 'processing' | 'results'
 
 export default function App(): JSX.Element {
   const [view, setView] = useState<View>('home')
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [projects, setProjects] = useState<ProjectSummary[]>([])
 
@@ -134,19 +137,13 @@ export default function App(): JSX.Element {
     setView('home')
   }, [])
 
-  const navigate = useCallback(
-    (target: 'home' | 'diagnostics') => {
-      if (target === 'diagnostics') setView('diagnostics')
-      else goHome()
-    },
-    [goHome]
-  )
-
   return (
     <div className="app">
       <Sidebar
         view={view}
-        onNavigate={navigate}
+        settingsOpen={settingsOpen}
+        onNewAnalysis={goHome}
+        onOpenSettings={() => setSettingsOpen(true)}
         health={health}
         projects={projects}
         activeProjectId={activeProjectId}
@@ -164,7 +161,6 @@ export default function App(): JSX.Element {
               starting={starting}
             />
           )}
-          {view === 'diagnostics' && <DiagnosticsView onNotify={notify} />}
           {view === 'processing' && jobId && (
             <ProcessingView
               jobId={jobId}
@@ -178,6 +174,15 @@ export default function App(): JSX.Element {
           )}
         </div>
       </main>
+
+      <Modal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        title="Settings"
+        icon={<GearIcon size={16} />}
+      >
+        <DiagnosticsView onNotify={notify} />
+      </Modal>
 
       {toast && (
         <div

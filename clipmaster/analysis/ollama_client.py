@@ -110,6 +110,44 @@ class OllamaClient:
         raw = self.chat(prompt, system=system, json_mode=True, model=model)
         return self._parse_json(raw)
 
+    # --- Vision ---------------------------------------------------------------
+    def vision_json(
+        self,
+        prompt: str,
+        image_b64: str,
+        *,
+        system: str | None = None,
+        model: str | None = None,
+    ) -> Any:
+        """Send a single image + prompt to a multimodal model, parse JSON reply.
+
+        Uses Ollama's ``/api/chat`` ``images`` field (base64, no data: prefix),
+        supported by vision models such as ``qwen2.5vl`` and ``llava``.
+        """
+        messages: list[dict[str, Any]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt, "images": [image_b64]})
+
+        payload: dict[str, Any] = {
+            "model": model or self.model,
+            "messages": messages,
+            "stream": False,
+            "format": "json",
+            "options": {"temperature": self.temperature},
+        }
+        try:
+            resp = httpx.post(
+                f"{self.host}/api/chat", json=payload, timeout=self.timeout
+            )
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise OllamaError(f"Ollama vision request failed: {exc}") from exc
+
+        data = resp.json()
+        raw = (data.get("message", {}) or {}).get("content", "") or ""
+        return self._parse_json(raw)
+
     @staticmethod
     def _parse_json(raw: str) -> Any:
         """Best-effort extraction of a JSON value from a model response."""

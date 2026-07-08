@@ -4,7 +4,9 @@ import { GearIcon, LogoMark } from './icons'
 
 interface Props {
   view: string
-  onNavigate: (view: 'home' | 'diagnostics') => void
+  settingsOpen: boolean
+  onNewAnalysis: () => void
+  onOpenSettings: () => void
   health: HealthResponse | null
   projects: ProjectSummary[]
   activeProjectId: string | null
@@ -13,13 +15,15 @@ interface Props {
 
 export function Sidebar({
   view,
-  onNavigate,
+  settingsOpen,
+  onNewAnalysis,
+  onOpenSettings,
   health,
   projects,
   activeProjectId,
   onOpenProject
 }: Props): JSX.Element {
-  const settingsActive = view === 'diagnostics'
+  const homeActive = view === 'home'
   const issues = health ? health.components.filter((c) => !c.ok).length : 0
   const statusLabel = !health
     ? 'Connecting to backend…'
@@ -39,10 +43,7 @@ export function Sidebar({
       </div>
 
       <div className="nav">
-        <button
-          className={`nav-item ${!settingsActive ? 'active' : ''}`}
-          onClick={() => onNavigate('home')}
-        >
+        <button className={`nav-item ${homeActive ? 'active' : ''}`} onClick={onNewAnalysis}>
           <span className="plus">+</span>
           New analysis
         </button>
@@ -69,14 +70,15 @@ export function Sidebar({
 
       <div className="sidebar-footer">
         <button
-          className={`settings-btn ${settingsActive ? 'active' : ''}`}
-          onClick={() => onNavigate('diagnostics')}
-          title={`Settings & diagnostics — ${statusLabel}`}
+          className={`settings-icon-btn ${settingsOpen ? 'active' : ''}`}
+          onClick={onOpenSettings}
+          title={`Settings — ${statusLabel}`}
+          aria-label="Open settings"
         >
-          <GearIcon size={16} />
-          <span>Settings</span>
-          <span className="spacer" />
-          <span className={`status-dot ${statusClass}`} aria-label={statusLabel} />
+          <GearIcon size={18} />
+          {statusClass !== 'ok' && (
+            <span className={`status-dot ${statusClass}`} aria-hidden="true" />
+          )}
         </button>
       </div>
     </aside>

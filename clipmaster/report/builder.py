@@ -64,6 +64,8 @@ def render_markdown(report: AnalysisReport) -> str:
         f"- **Transcription:** {report.transcription_model or 'n/a'} · "
         f"**LLM:** {report.llm_model or 'n/a (heuristics only)'}"
     )
+    if report.vision_model:
+        lines.append(f"- **Vision:** {report.vision_model}")
     lines.append("")
 
     # --- Keywords ---
@@ -88,6 +90,41 @@ def render_markdown(report: AnalysisReport) -> str:
                 lines.append("")
                 lines.append("*Keywords:* " + ", ".join(f"`{k}`" for k in ch.keywords))
             lines.append("")
+
+    # --- On-screen content ---
+    vf = report.visual_features
+    if vf and vf.keyframes:
+        kinds: dict[str, int] = {}
+        for kf in vf.keyframes:
+            kinds[kf.kind.value] = kinds.get(kf.kind.value, 0) + 1
+        lines.append("## On-screen content")
+        lines.append("")
+        lines.append(
+            f"*{len(vf.keyframes)} keyframe(s) analysed with "
+            f"{vf.model or 'the vision model'} · {len(vf.scene_changes)} scene change(s)*"
+        )
+        lines.append("")
+        dist = " · ".join(
+            f"{n}× {k.replace('_', ' ')}"
+            for k, n in sorted(kinds.items(), key=lambda kv: kv[1], reverse=True)
+        )
+        lines.append(f"- **Frame types:** {dist}")
+        notable = sorted(
+            (kf for kf in vf.keyframes if kf.informativeness >= 0.6),
+            key=lambda k: k.informativeness,
+            reverse=True,
+        )[:8]
+        if notable:
+            lines.append("")
+            lines.append("**Notable visual moments:**")
+            lines.append("")
+            for kf in sorted(notable, key=lambda k: k.time):
+                desc = kf.description or kf.kind.value.replace("_", " ")
+                lines.append(
+                    f"- {format_timestamp(kf.time)} · "
+                    f"*{kf.kind.value.replace('_', ' ')}* — {desc}"
+                )
+        lines.append("")
 
     # --- Clip candidates ---
     if report.clip_candidates:
@@ -119,6 +156,11 @@ def render_markdown(report: AnalysisReport) -> str:
     lines.append(
         f"- **Segments flagged:** {n_filler} filler · {n_off} off-topic · {n_qa} Q&A"
     )
+    n_visual_kept = sum(
+        1 for s in report.segment_analyses if s.reason.startswith("On-screen")
+    )
+    if n_visual_kept:
+        lines.append(f"- **Kept for on-screen content:** {n_visual_kept} segment(s)")
     lines.append("")
 
     # --- Warnings ---

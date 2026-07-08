@@ -27,6 +27,8 @@ class Stage(str, Enum):
     EXTRACT_AUDIO = "extract_audio"
     SILENCE = "silence"
     TRANSCRIBE = "transcribe"
+    AUDIO_ANALYSIS = "audio_analysis"
+    VISUAL_ANALYSIS = "visual_analysis"
     ANALYZE = "analyze"
     REPORT = "report"
     CLEANUP = "cleanup"

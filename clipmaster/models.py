@@ -112,6 +112,58 @@ class SilenceSpan(BaseModel):
         return self.end - self.start
 
 
+# --- Audio features (DSP) ----------------------------------------------------
+class SegmentAudio(BaseModel):
+    """Loudness / delivery metrics for one transcript segment."""
+
+    segment_id: int
+    rms_db: float = -60.0          # mean loudness over the segment
+    peak_db: float = -60.0         # loudest moment
+    speech_rate_wps: float = 0.0   # words per second (delivery pace)
+    pause_ratio: float = 0.0       # fraction of the segment that is near-silent
+    energy_score: float = 0.5      # 0..1 loudness/emphasis relative to the file
+
+
+class AudioFeatures(BaseModel):
+    """File-wide audio analysis, keyed to transcript segments."""
+
+    sample_rate: int = 8000
+    global_rms_db: float = -60.0
+    segments: list[SegmentAudio] = Field(default_factory=list)
+
+
+# --- Visual features (vision model) ------------------------------------------
+class VisualKind(str, Enum):
+    """What a sampled keyframe predominantly shows."""
+
+    PRESENTATION = "presentation"     # slides / talk deck
+    SCREEN_DEMO = "screen_demo"       # software / desktop / app walkthrough
+    CODE_TERMINAL = "code_terminal"   # code editor / terminal / console
+    LAB_HARDWARE = "lab_hardware"     # lab setup, devices, hardware, machines
+    DIAGRAM_CHART = "diagram_chart"   # diagrams, charts, whiteboard
+    TALKING_HEAD = "talking_head"     # presenter on camera, no info on screen
+    OTHER = "other"
+
+
+class VisualKeyframe(BaseModel):
+    """A sampled frame described by the local vision model."""
+
+    time: float
+    kind: VisualKind = VisualKind.OTHER
+    description: str = ""
+    informativeness: float = 0.5   # 0..1 how much on-screen info/teaching value
+    has_text: bool = False
+    image_path: str | None = None
+
+
+class VisualFeatures(BaseModel):
+    """Scene-change timeline plus vision-model keyframe understanding."""
+
+    scene_changes: list[float] = Field(default_factory=list)
+    keyframes: list[VisualKeyframe] = Field(default_factory=list)
+    model: str = ""
+
+
 # --- Analysis ----------------------------------------------------------------
 class SegmentKind(str, Enum):
     ON_TOPIC = "on_topic"
@@ -131,9 +183,16 @@ class SegmentAnalysis(BaseModel):
     end: float
     kind: SegmentKind = SegmentKind.ON_TOPIC
     topic: str | None = None
-    importance: float = 0.5  # 0..1, higher = more worth keeping
+    importance: float = 0.5  # 0..1, higher = more worth keeping (fused signal)
     keep: bool = True
     reason: str = ""
+
+    # Signal provenance (which factor contributed what) — all optional so older
+    # transcript-only reports still validate.
+    transcript_importance: float | None = None
+    audio_score: float | None = None
+    visual_score: float | None = None
+    visual_kind: str | None = None
 
 
 class Chapter(BaseModel):
@@ -177,7 +236,7 @@ class KeepSpan(BaseModel):
 class AnalysisReport(BaseModel):
     """The complete analysis artifact — the foundation for every action."""
 
-    schema_version: int = 1
+    schema_version: int = 2
     project_id: str
     source_path: str
     created_at: str = Field(default_factory=_utcnow)
@@ -186,6 +245,8 @@ class AnalysisReport(BaseModel):
     chunk_plan: ChunkPlan
     transcript: Transcript
     silences: list[SilenceSpan] = Field(default_factory=list)
+    audio_features: AudioFeatures | None = None
+    visual_features: VisualFeatures | None = None
 
     summary: str = ""
     keywords: list[str] = Field(default_factory=list)
@@ -197,6 +258,7 @@ class AnalysisReport(BaseModel):
     # Provenance so results are reproducible / debuggable.
     transcription_model: str = ""
     llm_model: str = ""
+    vision_model: str = ""
     warnings: list[str] = Field(default_factory=list)
 
     # --- Convenience metrics --------------------------------------------------

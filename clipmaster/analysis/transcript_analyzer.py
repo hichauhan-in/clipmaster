@@ -15,21 +15,26 @@ shorts, editing) can act on the numbers directly.
 
 from __future__ import annotations
 
+import bisect
 import re
 from dataclasses import dataclass, field
 
 from clipmaster.analysis.ollama_client import OllamaClient, OllamaError
-from clipmaster.config import AnalysisConfig, LLMConfig
+from clipmaster.config import AnalysisConfig, LLMConfig, SignalWeights
 from clipmaster.logging_setup import get_logger
 from clipmaster.models import (
+    AudioFeatures,
     Chapter,
     ClipCandidate,
     KeepSpan,
     SegmentAnalysis,
+    SegmentAudio,
     SegmentKind,
     SilenceSpan,
     Transcript,
     TranscriptSegment,
+    VisualFeatures,
+    VisualKeyframe,
 )
 
 logger = get_logger("analysis.transcript")
@@ -245,10 +250,21 @@ class TranscriptAnalyzer:
         silences: list[SilenceSpan],
         *,
         progress=None,
+        audio_features: AudioFeatures | None = None,
+        visual_features: VisualFeatures | None = None,
     ) -> dict:
         """Return a dict of analysis fields ready to attach to an AnalysisReport."""
         warnings: list[str] = []
         segments = transcript.segments
+
+        # Index the complementary signals for quick per-segment lookup.
+        audio_by_id: dict[int, SegmentAudio] = {}
+        if audio_features is not None:
+            audio_by_id = {a.segment_id: a for a in audio_features.segments}
+        keyframes: list[VisualKeyframe] = []
+        if visual_features is not None:
+            keyframes = sorted(visual_features.keyframes, key=lambda k: k.time)
+        kf_times = [k.time for k in keyframes]
 
         # 1) Heuristic base scores for every segment.
         filler_words = self.analysis_config.filler_words
@@ -303,14 +319,22 @@ class TranscriptAnalyzer:
         # 4) Global summary.
         summary = self._global_summary(summaries) if summaries else ""
 
-        # 5) Per-segment verdicts combining heuristics + LLM span tags.
+        # 5) Per-segment verdicts fusing transcript + audio + visual signals.
         segment_analyses = self._build_segment_analyses(
-            segments, heur, off_topic_spans, qa_spans, chapters
+            segments,
+            heur,
+            off_topic_spans,
+            qa_spans,
+            chapters,
+            audio_by_id,
+            keyframes,
+            kf_times,
         )
 
         # 6) Attach segment ids to chapters and keep a generous pool of clips
         #    (the shorts feature applies the final duration/count selection).
         _assign_segments_to_chapters(chapters, segments)
+        _boost_clips(clips, segments, audio_by_id, keyframes)
         clips = clips[:_MAX_CLIP_CANDIDATES]
 
         # 7) Cleanup keep-spans from kept segments.
@@ -349,32 +373,66 @@ class TranscriptAnalyzer:
         off_topic_spans: list[tuple[float, float, str]],
         qa_spans: list[tuple[float, float, str]],
         chapters: list[Chapter],
+        audio_by_id: dict[int, SegmentAudio],
+        keyframes: list[VisualKeyframe],
+        kf_times: list[float],
     ) -> list[SegmentAnalysis]:
-        threshold = self.analysis_config.keep_importance_threshold
+        ac = self.analysis_config
+        weights = ac.weights
+        threshold = ac.keep_importance_threshold
+        informative_kinds = set(ac.visual_informative_kinds)
+        floor = ac.visual_floor_importance
         analyses: list[SegmentAnalysis] = []
         for seg in segments:
-            importance, filler_ratio = heur[seg.id]
+            transcript_importance, filler_ratio = heur[seg.id]
             kind = SegmentKind.ON_TOPIC
             reason = ""
 
+            # Transcript-derived verdict (caps importance for weak spans).
             if filler_ratio >= 0.6:
                 kind = SegmentKind.FILLER
-                importance = min(importance, 0.2)
+                transcript_importance = min(transcript_importance, 0.2)
                 reason = "High filler / low information density."
             if _in_spans(seg, qa_spans):
                 kind = SegmentKind.QA
-                importance = min(importance, 0.4)
+                transcript_importance = min(transcript_importance, 0.4)
                 reason = reason or "Audience Q&A, tangential to core topic."
             if _in_spans(seg, off_topic_spans):
                 kind = SegmentKind.OFF_TOPIC
-                importance = min(importance, 0.3)
+                transcript_importance = min(transcript_importance, 0.3)
                 reason = reason or "Off-topic aside."
 
+            # Complementary signals.
+            audio = audio_by_id.get(seg.id)
+            audio_score = audio.energy_score if audio is not None else None
+            kf = _nearest_keyframe(keyframes, kf_times, (seg.start + seg.end) / 2)
+            visual_score = kf.informativeness if kf is not None else None
+            visual_kind = kf.kind.value if kf is not None else None
+
+            importance = _fuse(weights, transcript_importance, audio_score, visual_score)
+
+            # Visual floor: on-screen teaching content (slides, demos, code, labs,
+            # diagrams) is never dropped just because speech is sparse.
+            visual_informative = (
+                kf is not None
+                and visual_kind in informative_kinds
+                and visual_score is not None
+                and visual_score >= 0.4
+            )
+            if visual_informative:
+                importance = max(importance, floor)
+                if kind in {SegmentKind.FILLER, SegmentKind.OFF_TOPIC}:
+                    kind = SegmentKind.ON_TOPIC
+                reason = (
+                    f"On-screen {visual_kind.replace('_', ' ')} content — "
+                    "kept for visual value."
+                )
+
             topic = _chapter_title_at(chapters, seg.start)
-            keep = importance >= threshold and kind not in {
-                SegmentKind.FILLER,
-                SegmentKind.OFF_TOPIC,
-            }
+            keep = visual_informative or (
+                importance >= threshold
+                and kind not in {SegmentKind.FILLER, SegmentKind.OFF_TOPIC}
+            )
             analyses.append(
                 SegmentAnalysis(
                     segment_id=seg.id,
@@ -385,12 +443,75 @@ class TranscriptAnalyzer:
                     importance=round(importance, 3),
                     keep=keep,
                     reason=reason,
+                    transcript_importance=round(transcript_importance, 3),
+                    audio_score=round(audio_score, 3) if audio_score is not None else None,
+                    visual_score=round(visual_score, 3) if visual_score is not None else None,
+                    visual_kind=visual_kind,
                 )
             )
         return analyses
 
 
 # --- Module helpers ----------------------------------------------------------
+def _fuse(
+    weights: SignalWeights,
+    transcript_score: float,
+    audio_score: float | None,
+    visual_score: float | None,
+) -> float:
+    """Weighted mean of the available signals (weights renormalised on absence)."""
+    parts: list[tuple[float, float]] = [(max(0.0, weights.transcript), transcript_score)]
+    if audio_score is not None:
+        parts.append((max(0.0, weights.audio), audio_score))
+    if visual_score is not None:
+        parts.append((max(0.0, weights.visual), visual_score))
+    total = sum(w for w, _ in parts)
+    if total <= 0:
+        return transcript_score
+    return sum(w * v for w, v in parts) / total
+
+
+def _nearest_keyframe(
+    keyframes: list[VisualKeyframe], times: list[float], t: float
+) -> VisualKeyframe | None:
+    """The sampled keyframe closest in time to ``t`` (sparse frames -> nearest)."""
+    if not keyframes:
+        return None
+    i = bisect.bisect_left(times, t)
+    if i <= 0:
+        return keyframes[0]
+    if i >= len(times):
+        return keyframes[-1]
+    before, after = times[i - 1], times[i]
+    return keyframes[i - 1] if (t - before) <= (after - t) else keyframes[i]
+
+
+def _boost_clips(
+    clips: list[ClipCandidate],
+    segments: list[TranscriptSegment],
+    audio_by_id: dict[int, SegmentAudio],
+    keyframes: list[VisualKeyframe],
+) -> None:
+    """Nudge clip scores up for spans with strong audio energy or on-screen value."""
+    if not clips or (not audio_by_id and not keyframes):
+        return
+    for clip in clips:
+        energies = [
+            audio_by_id[s.id].energy_score
+            for s in segments
+            if s.id in audio_by_id and s.start < clip.end and s.end > clip.start
+        ]
+        infos = [kf.informativeness for kf in keyframes if clip.start <= kf.time <= clip.end]
+        boost = 0.0
+        if energies:
+            boost += 0.10 * max(0.0, max(energies) - 0.5)
+        if infos:
+            boost += 0.18 * max(0.0, max(infos) - 0.5)
+        if boost:
+            clip.score = round(max(0.0, min(1.0, clip.score + boost)), 3)
+    clips.sort(key=lambda c: c.score, reverse=True)
+
+
 def _dedupe_keep_order(items: list[str]) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
@@ -445,7 +566,15 @@ def analyze_transcript(
     analysis_config: AnalysisConfig,
     *,
     progress=None,
+    audio_features: AudioFeatures | None = None,
+    visual_features: VisualFeatures | None = None,
 ) -> dict:
     """Convenience wrapper around :class:`TranscriptAnalyzer`."""
     analyzer = TranscriptAnalyzer(llm_config, analysis_config)
-    return analyzer.analyze(transcript, silences, progress=progress)
+    return analyzer.analyze(
+        transcript,
+        silences,
+        progress=progress,
+        audio_features=audio_features,
+        visual_features=visual_features,
+    )
