@@ -193,19 +193,24 @@ code,
   justify-content: center;
   width: 34px;
   height: 34px;
-  background: transparent;
-  border: 1px solid transparent;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  color: var(--text-dim);
+  color: var(--text);
+  padding: 0;
+}
+.settings-icon-btn svg {
+  display: block;
 }
 .settings-icon-btn:hover {
-  background: var(--bg-elev-2);
-  border-color: var(--border);
-  color: var(--text);
+  background: #1d222b;
+  border-color: var(--border-strong);
+  color: #fff;
 }
 .settings-icon-btn.active {
   background: var(--accent-dim);
-  color: var(--text);
+  border-color: var(--accent);
+  color: #fff;
 }
 .status-dot {
   width: 8px;
@@ -819,6 +824,30 @@ button.mini {
 .chip.in-use {
   color: var(--good);
   border-color: rgba(63, 185, 80, 0.5);
+}
+.model-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.model-actions button {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.model-actions button.ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+.model-actions button.ghost:hover:not(:disabled) {
+  background: var(--bg-elev-2);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.chip.vision {
+  color: #a371f7;
+  border-color: rgba(163, 113, 247, 0.5);
 }
 
 .text-input {

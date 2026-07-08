@@ -169,6 +169,7 @@ export interface OllamaStatus {
   version: string | null
   models: OllamaModel[]
   selected_model: string
+  selected_vision_model: string
   error: string | null
 }
 

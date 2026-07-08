@@ -51,6 +51,17 @@ class JobManager:
         self.settings = settings
         self._jobs: dict[str, Job] = {}
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="clipmaster")
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Remember the app's event loop (captured on startup).
+
+        ``start_analyze`` runs inside FastAPI's sync-endpoint worker thread, which
+        has no running loop of its own, so we can't call ``get_running_loop``
+        there. We capture the loop once at startup and reuse it to bridge worker
+        thread → event loop for progress events.
+        """
+        self._loop = loop
 
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
@@ -61,7 +72,9 @@ class JobManager:
         if not source.exists() or not source.is_file():
             raise FileNotFoundError(f"Input file not found: {path}")
 
-        loop = asyncio.get_running_loop()
+        loop = self._loop
+        if loop is None:  # pragma: no cover - defensive; set on startup
+            loop = asyncio.get_event_loop()
         job = Job(id=uuid.uuid4().hex[:12], kind="analyze")
         self._jobs[job.id] = job
 

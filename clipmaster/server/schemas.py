@@ -92,6 +92,7 @@ class OllamaStatus(BaseModel):
     version: str | None = None
     models: list[OllamaModel] = Field(default_factory=list)
     selected_model: str
+    selected_vision_model: str = ""
     error: str | None = None
 
 

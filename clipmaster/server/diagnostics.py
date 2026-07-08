@@ -114,6 +114,7 @@ def ollama_status(settings: Settings) -> OllamaStatus:
         version=version,
         models=models,
         selected_model=settings.llm.model,
+        selected_vision_model=settings.llm.vision_model,
         error=error,
     )
 

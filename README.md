@@ -268,7 +268,7 @@ passing **`--config path.yaml`**, or setting `CLIPMASTER_*` env vars.
 |                 | `language`                 | `null` (auto)      | Force a language, or auto-detect                    |
 | `llm`           | `host`                     | `localhost:11434`  | Ollama endpoint                                     |
 |                 | `model`                    | `llama3.1:8b`      | Chat model for analysis                             |
-|                 | `vision_model`             | `llava:13b`        | Keyframe understanding (roadmap)                    |
+|                 | `vision_model`             | `qwen2.5vl:7b`     | Vision model for on-screen keyframe analysis        |
 |                 | `max_input_chars`          | `12000`            | Transcript window size per LLM call                 |
 | `analysis`      | `filler_words`             | list               | Words that lower a segment's importance             |
 |                 | `keep_importance_threshold`| `0.35`             | Keep/cut cutoff for cleanup                         |
@@ -463,7 +463,8 @@ working:
   page (nothing is installed silently).
 - **Ollama** — shows whether the local server is reachable and on which port, a
   **Start Ollama** button if it's down, the list of installed models with a
-  one-click **Use** to pick the active model, and a **Pull** box with live
+  one-click **Use** to pick the active analysis model and **Use for vision** to
+  pick the on-screen (keyframe) vision model, and a **Pull** box with live
   download progress.
 - **Logs & issues** — choose a folder where a rotating log file is written, open
   that folder, and watch a live tail of recent log lines (errors highlighted).
@@ -485,6 +486,7 @@ Model and log-path choices are remembered in `config/local.yaml`.
 | GET    | `/api/diagnostics`            | dependency + Ollama + log status         |
 | POST   | `/api/ollama/start`           | start `ollama serve` if not running      |
 | POST   | `/api/settings/model`         | set the active LLM model                 |
+| POST   | `/api/settings/vision-model`  | set the active vision model              |
 | POST   | `/api/ollama/pull`            | pull a model → `{pull_id}`               |
 | GET    | `/api/ollama/pull/{id}`       | model pull progress                      |
 | GET    | `/api/logs`                   | recent log lines + active log path       |

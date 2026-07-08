@@ -95,6 +95,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.jobs = manager
     app.state.pulls = pulls
 
+    @app.on_event("startup")
+    async def _startup() -> None:  # pragma: no cover - lifecycle hook
+        # Capture the running event loop so background analysis jobs (started from
+        # FastAPI's sync-endpoint worker thread) can bridge progress events back.
+        manager.set_loop(asyncio.get_running_loop())
+
     @app.on_event("shutdown")
     def _shutdown() -> None:  # pragma: no cover - lifecycle hook
         manager.shutdown()
@@ -198,6 +204,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         save_local_overrides({"llm": {"model": model}})
         logger.info("Active LLM model set to %s", model)
         return ActionResult(ok=True, message=f"Now using {model} for analysis.")
+
+    @app.post("/api/settings/vision-model", response_model=ActionResult)
+    def select_vision_model(req: SelectModelRequest) -> ActionResult:
+        from clipmaster.config import save_local_overrides
+
+        model = req.model.strip()
+        if not model:
+            raise HTTPException(status_code=400, detail="Model name is required")
+        settings.llm.vision_model = model
+        save_local_overrides({"llm": {"vision_model": model}})
+        logger.info("Active vision model set to %s", model)
+        return ActionResult(ok=True, message=f"Now using {model} for on-screen analysis.")
 
     @app.post("/api/ollama/pull", response_model=PullStatus)
     def ollama_pull(req: PullRequest) -> PullStatus:

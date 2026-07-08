@@ -65,6 +65,12 @@ export const client = {
       body: JSON.stringify({ model })
     }),
 
+  selectVisionModel: (model: string) =>
+    api<ActionResult>('/api/settings/vision-model', {
+      method: 'POST',
+      body: JSON.stringify({ model })
+    }),
+
   pullModel: (model: string) =>
     api<PullStatus>('/api/ollama/pull', {
       method: 'POST',

@@ -98,6 +98,22 @@ export function DiagnosticsView({ onNotify }: Props): JSX.Element {
     [onNotify, refresh]
   )
 
+  const useVisionModel = useCallback(
+    async (model: string) => {
+      setBusy(`vision:${model}`)
+      try {
+        const r = await client.selectVisionModel(model)
+        onNotify(r.message)
+        await refresh()
+      } catch (e) {
+        onNotify((e as Error).message)
+      } finally {
+        setBusy(null)
+      }
+    },
+    [onNotify, refresh]
+  )
+
   const pollPull = useCallback(
     (id: string) => {
       if (pullTimer.current) window.clearInterval(pullTimer.current)
@@ -207,16 +223,23 @@ export function DiagnosticsView({ onNotify }: Props): JSX.Element {
           <span className="k">Active model</span>
           <span className="mono">{ollama?.selected_model ?? '—'}</span>
         </div>
+        <div className="kv">
+          <span className="k">Vision model</span>
+          <span className="mono">{ollama?.selected_vision_model || '—'}</span>
+        </div>
 
         {ollama?.reachable && (
           <>
-            <div className="section-head">Installed models — pick the one to use</div>
+            <div className="section-head">
+              Installed models — pick your analysis and vision models
+            </div>
             {ollama.models.length === 0 && (
               <div className="empty">No models yet. Pull one below (e.g. llama3.1:8b).</div>
             )}
             <div className="model-list">
               {ollama.models.map((m) => {
                 const selected = m.name === ollama.selected_model
+                const visionSelected = m.name === ollama.selected_vision_model
                 return (
                   <div key={m.name} className={`model-row ${selected ? 'selected' : ''}`}>
                     <div className="model-info">
@@ -227,16 +250,30 @@ export function DiagnosticsView({ onNotify }: Props): JSX.Element {
                         {m.size_bytes ? humanSize(m.size_bytes) : ''}
                       </div>
                     </div>
-                    {selected ? (
-                      <span className="chip in-use">In use</span>
-                    ) : (
-                      <button
-                        onClick={() => useModel(m.name)}
-                        disabled={busy === `use:${m.name}`}
-                      >
-                        Use
-                      </button>
-                    )}
+                    <div className="model-actions">
+                      {selected ? (
+                        <span className="chip in-use">Analysis</span>
+                      ) : (
+                        <button
+                          onClick={() => useModel(m.name)}
+                          disabled={busy === `use:${m.name}`}
+                        >
+                          Use
+                        </button>
+                      )}
+                      {visionSelected ? (
+                        <span className="chip vision">Vision</span>
+                      ) : (
+                        <button
+                          className="ghost"
+                          onClick={() => useVisionModel(m.name)}
+                          disabled={busy === `vision:${m.name}`}
+                          title="Use this model to read on-screen content (slides, code, demos)"
+                        >
+                          Use for vision
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )
               })}
@@ -246,7 +283,7 @@ export function DiagnosticsView({ onNotify }: Props): JSX.Element {
             <div className="row">
               <input
                 className="text-input"
-                placeholder="e.g. llama3.1:8b, llava:13b, qwen2.5:7b"
+                placeholder="e.g. qwen2.5:14b (analysis), qwen2.5vl:7b (vision)"
                 value={pullName}
                 onChange={(e) => setPullName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !pullActive && startPull()}
