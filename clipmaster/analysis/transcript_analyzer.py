@@ -45,10 +45,15 @@ _WORD_RE = re.compile(r"[a-z']+")
 # applies the final duration/count selection from the clips config.
 _MAX_CLIP_CANDIDATES = 12
 
-# Sign-off / outro cues. When one of these appears in the latter part of a video
-# ("that's it for this video", "thanks for watching", "see you in the next one"),
-# everything from there to the end is the outro — typically a playlist / subscribe
-# / course self-promotion wrap-up — and is dropped from the cleaned cut.
+# Longest tail we will ever treat as an outro. A genuine sign-off wrap-up is
+# short; if a "sign-off" phrase would drop more than this, it is almost certainly
+# a mid-video section transition and we leave the content alone.
+_MAX_OUTRO_SECONDS = 90.0
+
+# Sign-off / outro cues. These also appear mid-video as section transitions
+# ("that wraps up this part, see you in the next one"), so a match alone is NOT
+# enough: the cutoff (below) only fires for a match in the final stretch that
+# would drop a short tail — never a large span of real content.
 _SIGN_OFF_RE = re.compile(
     r"(that'?s it for (this|the|today'?s|our|my)?\s*(video|lesson|tutorial|session|episode|one)"
     r"|that'?s all (for (this|today|now)|i have|for me)"
@@ -425,16 +430,27 @@ class TranscriptAnalyzer:
         floor = ac.visual_floor_importance
         promo_phrases = [p.lower() for p in ac.promo_phrases] if ac.remove_promotional else []
 
-        # Sign-off / outro cutoff: once the creator wraps up in the latter part of
-        # the video ("that's it for the video", "thanks for watching"), everything
-        # from there to the end is outro self-promotion (playlist plugs, subscribe
-        # CTAs) and is dropped — even if a slide is still on screen.
+        # Sign-off / outro cutoff. A genuine outro is a SHORT wrap-up at the very
+        # end ("that's it, thanks for watching, check my playlist"). The same
+        # phrasing also marks mid-video section transitions, so we only cut when a
+        # sign-off sits in the final stretch AND the span it would drop is short
+        # (<= _MAX_OUTRO_SECONDS). This guarantees we never discard a large tail of
+        # real content because of a transition line. Individual promo sentences
+        # elsewhere are still handled by phrase/LLM matching below.
         outro_start: float | None = None
         if ac.remove_promotional:
             video_end = max((s.end for s in segments), default=0.0)
             if video_end > 0:
+                # Latest of "last 15%" and "last _MAX_OUTRO_SECONDS": for long
+                # videos this is the final minute-and-a-half; for short ones the
+                # final 15%. Either way the dropped tail stays small.
+                cutoff_floor = max(0.85 * video_end, video_end - _MAX_OUTRO_SECONDS)
                 for seg in segments:
-                    if seg.start >= 0.6 * video_end and _SIGN_OFF_RE.search(seg.text):
+                    if (
+                        seg.start >= cutoff_floor
+                        and (video_end - seg.start) <= _MAX_OUTRO_SECONDS
+                        and _SIGN_OFF_RE.search(seg.text)
+                    ):
                         outro_start = seg.start
                         break
 

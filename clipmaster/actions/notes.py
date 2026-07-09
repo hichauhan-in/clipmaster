@@ -73,12 +73,16 @@ _SYSTEM = (
     "B[\"Server\"]`; use only plain ASCII arrows (`-->`, `->>`, `-->>`, `--x`); "
     "never put parentheses, slashes, colons, `#`, `&`, `<` or `>` OUTSIDE quotes; "
     "give every node a short alphanumeric id (letters/digits, no spaces) and never "
-    "use the reserved word `end` as an id; keep each statement on its own line; do "
-    "NOT use experimental diagram types. Every diagram must be COMPLETE and valid "
-    "mermaid. (3) Never refer to 'the video', 'the speaker', 'this section/"
-    "lecture', 'as mentioned', or any timestamps — the reader has no access to the "
-    "source. (4) Never invent facts that the transcript does not support. Respond "
-    "ONLY with strict JSON — no prose outside the JSON."
+    "use the reserved word `end` as an id; put the diagram type on its OWN line with "
+    "NO direction after `sequenceDiagram`/`classDiagram`/`erDiagram`/`stateDiagram-v2` "
+    "(only `flowchart`/`graph` take a direction such as `TD`/`LR`); keep every node "
+    "label on a SINGLE line (use `<br/>` for a line break, never a real newline) and "
+    "never place numbered or bulleted lists inside a diagram; keep each statement on "
+    "its own line; do NOT use experimental diagram types. Every diagram must be "
+    "COMPLETE and valid mermaid. (3) Never refer to 'the video', 'the speaker', "
+    "'this section/lecture', 'as mentioned', or any timestamps — the reader has no "
+    "access to the source. (4) Never invent facts that the transcript does not "
+    "support. Respond ONLY with strict JSON — no prose outside the JSON."
 )
 
 
@@ -160,24 +164,89 @@ def _sanitize_flow_line(line: str) -> str:
     return line
 
 
+_FLOW_SKIP_FIRST = (
+    "flowchart",
+    "graph",
+    "subgraph",
+    "end",
+    "style",
+    "classdef",
+    "class",
+    "linkstyle",
+    "direction",
+)
+
+
 def _sanitize_mermaid(body: str, kind: str) -> str:
     """Best-effort cleanup so LLM-authored mermaid renders without parse errors."""
     for bad, good in _ARROW_FIXUPS:
         body = body.replace(bad, good)
     # Strip markdown emphasis/backticks that sometimes leak into a diagram.
     body = body.replace("`", "")
-    lines = body.splitlines()
     is_flow = kind in ("flowchart", "graph")
     out: list[str] = []
-    for line in lines:
+    seen_decl = False
+    for line in body.splitlines():
         s = line.rstrip()
-        if is_flow and s.strip() and not s.strip().startswith("%%"):
-            first = s.strip().split(None, 1)[0].lower()
+        stripped = s.strip()
+        if (
+            not seen_decl
+            and stripped
+            and not stripped.startswith("%%")
+            and stripped != "---"
+            and not stripped.startswith(("title:", "config:"))
+        ):
+            # Declaration line. Only flowchart/graph may carry a direction; for
+            # every other type a trailing 'TD'/'LR'/… is invalid (the reported
+            # `sequenceDiagram TD` error), so keep just the diagram-type token.
+            seen_decl = True
+            tok = stripped.split(None, 1)[0]
+            if tok.lower() in _MERMAID_KEYWORDS and not is_flow:
+                out.append(tok)
+                continue
+            out.append(s)
+            continue
+        if is_flow and stripped and not stripped.startswith("%%"):
+            first = stripped.split(None, 1)[0].lower()
             # Don't touch the declaration/subgraph/style lines.
-            if first not in ("flowchart", "graph", "subgraph", "end", "style", "classdef", "class", "linkstyle", "direction"):
+            if first not in _FLOW_SKIP_FIRST:
                 s = _sanitize_flow_line(s)
         out.append(s)
     return "\n".join(out).strip()
+
+
+def _strip_quoted(text: str) -> str:
+    """Blank out double-quoted spans so structural checks ignore label contents."""
+    return re.sub(r'"[^"\n]*"', '""', text)
+
+
+def _mermaid_is_safe(text: str, kind: str) -> bool:
+    """Reject diagrams with structural problems we cannot safely auto-repair.
+
+    Emitting a broken diagram makes the whole note render an error block, so when
+    a diagram looks malformed we drop it: the prose stays and a single
+    illustration is simply omitted rather than shipped broken.
+    """
+    outside = _strip_quoted(text)
+    for open_ch, close_ch in (("[", "]"), ("(", ")"), ("{", "}")):
+        if outside.count(open_ch) != outside.count(close_ch):
+            return False
+    if kind not in ("flowchart", "graph"):
+        return True
+    for raw in text.splitlines():
+        s = raw.strip()
+        if not s or s.startswith("%%"):
+            continue
+        bare = _strip_quoted(s)
+        # Markdown ordered-list leakage or a stray bare number is not valid mermaid
+        # (this is the reported "got '1'" error from a multi-line/list label).
+        if re.match(r"^\d+[.)]\s", bare) or re.fullmatch(r"\d+", bare):
+            return False
+        # A node shape must open and close on the same line (no multi-line labels).
+        for open_ch, close_ch in (("[", "]"), ("(", ")"), ("{", "}")):
+            if bare.count(open_ch) != bare.count(close_ch):
+                return False
+    return True
 
 
 def _clean_mermaid(raw: object) -> str:
@@ -199,9 +268,12 @@ def _clean_mermaid(raw: object) -> str:
         if first not in _MERMAID_KEYWORDS:
             return ""
         cleaned = _sanitize_mermaid(body, first)
-        # Require at least one content line beyond the declaration.
+        # Require content beyond the declaration AND a structurally sound diagram —
+        # a doubtful diagram is dropped so the markdown never renders an error.
         content = [ln for ln in cleaned.splitlines() if ln.strip()]
-        return cleaned if len(content) >= 2 else ""
+        if len(content) < 2 or not _mermaid_is_safe(cleaned, first):
+            return ""
+        return cleaned
     return ""
 
 
