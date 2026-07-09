@@ -36,8 +36,10 @@ export interface ShortsOptions {
   maxSeconds: number
   count?: number | null
   outputDir?: string | null
-  /** 'card' = rounded 1:1 card on a canvas; 'fit' = letterbox over blur. */
+  /** 'card' = rounded card on a canvas; 'fit' = fit over blur. */
   style?: 'card' | 'fit'
+  /** Output aspect: '9:16' vertical or '16:9' horizontal. */
+  aspect?: '9:16' | '16:9'
   /** Card backgrounds to render (card style only): 'blur' and/or 'black'. */
   backgrounds?: ('blur' | 'black')[]
 }

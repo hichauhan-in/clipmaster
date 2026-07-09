@@ -165,9 +165,10 @@ def keep_and_concat(
     return dest
 
 
-def _vertical_graph(render: RenderConfig) -> str:
-    w, h = render.shorts_width, render.shorts_height
-    if render.shorts_blur_background:
+def _fit_graph(w: int, h: int, *, blur: bool) -> str:
+    """Whole frame fitted into a ``w``×``h`` canvas — over a blurred fill of
+    itself (``blur``) or letterboxed on black."""
+    if blur:
         return (
             f"[0:v]split=2[bg][fg];"
             f"[bg]scale={w}:{h}:force_original_aspect_ratio=increase,"
@@ -192,38 +193,49 @@ def _round_alpha_expr(radius: int) -> str:
     )
 
 
-def _rounded_card_chain(label_in: str, wc: int, hc: int, radius: int, label_out: str) -> str:
-    """Centre-crop ``label_in`` to a square, scale to ``wc``×``hc`` and round the
-    corners, producing ``label_out`` (a yuva420p layer with a rounded alpha)."""
+def _rounded_card_chain(
+    label_in: str, wc: int, hc: int, radius: int, card_ar: float, label_out: str
+) -> str:
+    """Centre-crop ``label_in`` to the card aspect, scale to ``wc``×``hc`` and
+    round the corners, producing ``label_out`` (a yuva420p rounded layer). A
+    ``card_ar`` of 1.0 is a square crop; 16/9 keeps a horizontal frame intact."""
     return (
-        f"[{label_in}]crop='min(iw,ih)':'min(iw,ih)',scale={wc}:{hc},setsar=1,"
-        f"format=yuva420p,"
+        f"[{label_in}]crop='min(iw,ih*{card_ar:.6f})':'min(ih,iw/{card_ar:.6f})',"
+        f"scale={wc}:{hc},setsar=1,format=yuva420p,"
         f"geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='{_round_alpha_expr(radius)}'[{label_out}]"
     )
 
 
-def _card_graph(render: RenderConfig, *, duration: float, background: str) -> str:
-    """Vertical short with the source as a rounded **1:1 card** centred on the
-    canvas, leaving a visible margin all around.
+def _card_graph(
+    render: RenderConfig, *, duration: float, background: str, w: int, h: int, card_ar: float
+) -> str:
+    """Short with the source as a rounded card centred on a ``w``×``h`` canvas,
+    leaving a visible margin all around. The card aspect is ``card_ar`` (1:1 for
+    a vertical canvas, 16:9 for a horizontal one so nothing is cropped away).
 
     ``background`` is either ``"blur"`` — a zoomed, blurred copy of the same
     frame behind the card — or ``"black"`` — a solid-black canvas with a thin
     white border ring tracing the rounded card.
     """
-    w, h = render.shorts_width, render.shorts_height
     sm = max(0, int(render.shorts_card_side_margin))
-    wc = (w - 2 * sm)
-    wc -= wc % 2
-    wc = max(2, wc)
-    hc = wc  # 1:1 card
+    avail_w = max(2, w - 2 * sm)
+    avail_h = max(2, h - 2 * sm)
+    # Largest card of aspect card_ar that fits inside the margins on both axes.
+    wc = avail_w
+    hc = int(round(wc / card_ar))
+    if hc > avail_h:
+        hc = avail_h
+        wc = int(round(hc * card_ar))
+    wc = max(2, wc - wc % 2)
+    hc = max(2, hc - hc % 2)
     r = max(0, min(int(render.shorts_card_radius), wc // 2, hc // 2))
     vx = (w - wc) // 2
-    oy = (h - hc) // 2  # centred vertically → equal top/bottom margins
+    oy = (h - hc) // 2  # centred → equal margins around the card
 
     if background == "black":
         b = max(0, int(render.shorts_card_border))
         dur_s = f"{max(0.1, duration):.3f}"
-        fg = _rounded_card_chain("0:v", wc, hc, r, "fg")
+        fg = _rounded_card_chain("0:v", wc, hc, r, card_ar, "fg")
         if b > 0:
             wbc, hbc = wc + 2 * b, hc + 2 * b
             return (
@@ -242,7 +254,7 @@ def _card_graph(render: RenderConfig, *, duration: float, background: str) -> st
         )
 
     # Blurred background (default): a zoom-filled, blurred copy of the frame.
-    fg = _rounded_card_chain("src", wc, hc, r, "fg")
+    fg = _rounded_card_chain("src", wc, hc, r, card_ar, "fg")
     return (
         f"[0:v]split=2[src][bgsrc];"
         f"[bgsrc]scale={w}:{h}:force_original_aspect_ratio=increase,"
@@ -250,6 +262,19 @@ def _card_graph(render: RenderConfig, *, duration: float, background: str) -> st
         f"{fg};"
         f"[bg][fg]overlay={vx}:{oy},setsar=1[outv]"
     )
+
+
+def _canvas_for_aspect(render: RenderConfig, aspect: str) -> tuple[int, int, float]:
+    """Return ``(width, height, card_aspect)`` for the requested output aspect.
+
+    9:16 is the vertical canvas with a 1:1 card; 16:9 swaps to a horizontal
+    canvas with a 16:9 card so horizontal (educational) frames are kept whole.
+    """
+    long_side = max(render.shorts_width, render.shorts_height)
+    short_side = min(render.shorts_width, render.shorts_height)
+    if aspect == "16:9":
+        return long_side, short_side, 16 / 9
+    return short_side, long_side, 1.0
 
 
 def render_vertical_short(
@@ -264,24 +289,29 @@ def render_vertical_short(
     on_progress: ProgressFn | None = None,
     style: str = "fit",
     card_background: str = "blur",
+    aspect: str = "9:16",
 ) -> Path:
-    """Render ``[start, end]`` of ``source`` as a vertical 9:16 short into ``dest``.
+    """Render ``[start, end]`` of ``source`` as a short into ``dest``.
 
-    ``style`` selects the framing:
+    ``aspect`` is ``"9:16"`` (vertical) or ``"16:9"`` (horizontal). ``style``
+    selects the framing:
 
-    * ``"fit"`` (default) — the whole frame is letterboxed (never cropped) over a
-      blurred fill of itself, the familiar reel look, so slides/code/diagrams stay
-      fully visible.
-    * ``"card"`` — the frame sits as a rounded **1:1 card** centred on the canvas
-      with a visible margin, over a blurred (``card_background="blur"``) or solid
-      black (``"black"``) background.
+    * ``"fit"`` (default) — the whole frame is fitted (never cropped) over a
+      blurred fill of itself, so slides/code/diagrams stay fully visible.
+    * ``"card"`` — the frame sits as a rounded card centred on the canvas with a
+      visible margin, over a blurred (``card_background="blur"``) or solid black
+      (``"black"``) background. The card is 1:1 for a 9:16 canvas and 16:9 for a
+      16:9 canvas.
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     duration = max(0.1, end - start)
+    w, h, card_ar = _canvas_for_aspect(render, aspect)
     if style == "card":
-        graph = _card_graph(render, duration=duration, background=card_background)
+        graph = _card_graph(
+            render, duration=duration, background=card_background, w=w, h=h, card_ar=card_ar
+        )
     else:
-        graph = _vertical_graph(render)
+        graph = _fit_graph(w, h, blur=render.shorts_blur_background)
 
     args = [
         "-ss",

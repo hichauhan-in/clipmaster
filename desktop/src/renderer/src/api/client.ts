@@ -95,6 +95,7 @@ export const client = {
         count: opts.count ?? null,
         output_dir: opts.outputDir ?? null,
         style: opts.style ?? 'card',
+        aspect: opts.aspect ?? '9:16',
         backgrounds: opts.backgrounds ?? ['blur']
       })
     }),

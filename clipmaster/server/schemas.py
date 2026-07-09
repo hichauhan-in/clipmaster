@@ -75,7 +75,12 @@ class ShortsRequest(BaseModel):
     style: str = Field(
         "card",
         pattern="^(fit|card)$",
-        description="'card' = rounded 1:1 card on a canvas; 'fit' = letterbox over blur.",
+        description="'card' = rounded card on a canvas; 'fit' = fit over blur.",
+    )
+    aspect: str = Field(
+        "9:16",
+        pattern="^(9:16|16:9)$",
+        description="Output aspect: '9:16' vertical or '16:9' horizontal.",
     )
     backgrounds: list[str] = Field(
         default_factory=lambda: ["blur"],

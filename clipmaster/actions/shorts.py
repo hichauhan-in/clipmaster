@@ -109,15 +109,17 @@ def build_shorts(
     output_dir: Path,
     style: str = "fit",
     card_backgrounds: list[str] | None = None,
+    aspect: str = "9:16",
     bus: EventBus | None = None,
 ) -> ShortsResult:
     """Render up to ``count`` vertical shorts into ``output_dir``.
 
-    ``style`` is ``"fit"`` (letterbox over a blurred fill) or ``"card"`` (a
-    rounded 1:1 card centred on the canvas). ``card_backgrounds`` selects one or
-    both card backgrounds — ``"blur"`` and/or ``"black"`` — and only applies to
-    the card style; when both are given, every moment is rendered once per
-    background.
+    ``aspect`` is ``"9:16"`` (vertical) or ``"16:9"`` (horizontal, so wide
+    educational frames are kept whole). ``style`` is ``"fit"`` (letterbox over a
+    blurred fill) or ``"card"`` (a rounded card centred on the canvas).
+    ``card_backgrounds`` selects one or both card backgrounds — ``"blur"`` and/or
+    ``"black"`` — and only applies to the card style; when both are given, every
+    moment is rendered once per background.
     """
     bus = bus or EventBus()
     source = Path(report.source_path)
@@ -128,6 +130,7 @@ def build_shorts(
         )
 
     style = style if style in ("fit", "card") else "fit"
+    aspect = aspect if aspect in ("9:16", "16:9") else "9:16"
     # Keep a stable blur→black order and drop anything unrecognised; fall back to
     # a single blurred card when nothing valid was requested.
     wanted = set(card_backgrounds or [])
@@ -179,6 +182,7 @@ def build_shorts(
                 on_progress=_on_progress,
                 style=style,
                 card_background=variant if style == "card" else "blur",
+                aspect=aspect,
             )
             files.append(dest)
             logger.info("Rendered short %s (%.1fs)", dest.name, spec.duration)
@@ -188,9 +192,11 @@ def build_shorts(
         bg = " and ".join(names[b] for b in backgrounds)
         message = (
             f"Rendered {len(files)} short(s), {min_s:.0f}–{max_s:.0f}s each, "
-            f"as 9:16 cards on a {bg} background."
+            f"as {aspect} cards on a {bg} background."
         )
     else:
-        message = f"Rendered {len(files)} short(s), {min_s:.0f}–{max_s:.0f}s each, as 9:16 video."
+        message = (
+            f"Rendered {len(files)} short(s), {min_s:.0f}–{max_s:.0f}s each, as {aspect} video."
+        )
     bus.stage_end(Stage.CLIPS, message)
     return ShortsResult(output_dir=output_dir, files=files, message=message)

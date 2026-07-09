@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { KeyboardEvent } from 'react'
 import { client } from '../api/client'
 import { useJobStream } from '../api/useJobStream'
 import type { AnalysisReport } from '../types'
@@ -35,8 +36,15 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
   const [folder, setFolder] = useState<string | null>(null)
   const [range, setRange] = useState<[number, number]>([15, 30])
   const [count, setCount] = useState(6)
-  // Shorts framing: rounded 1:1 "card" (over blur/black) or letterboxed "fit".
+  // Numeric fields are edited as free text (so select-all + retype works) and
+  // clamped/reconciled on blur.
+  const [minDraft, setMinDraft] = useState('15')
+  const [maxDraft, setMaxDraft] = useState('30')
+  const [countDraft, setCountDraft] = useState('6')
+  // Shorts framing: rounded "card" (over blur/black) or fitted "fit", and the
+  // output aspect (9:16 vertical or 16:9 horizontal).
   const [shortStyle, setShortStyle] = useState<'card' | 'fit'>('card')
+  const [aspect, setAspect] = useState<'9:16' | '16:9'>('9:16')
   // Card backgrounds are independent toggles — pick blurred, black, or both.
   const [wantBlur, setWantBlur] = useState(true)
   const [wantBlack, setWantBlack] = useState(false)
@@ -54,7 +62,11 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
     setFolder(null)
     setRange([15, 30])
     setCount(6)
+    setMinDraft('15')
+    setMaxDraft('30')
+    setCountDraft('6')
     setShortStyle('card')
+    setAspect('9:16')
     setWantBlur(true)
     setWantBlack(false)
     setWantNotes(true)
@@ -93,6 +105,36 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
   if (wantBlur) cardBackgrounds.push('blur')
   if (wantBlack) cardBackgrounds.push('black')
 
+  // Commit a numeric field on blur: clamp to bounds and keep min <= max.
+  const commitMin = (): void => {
+    let n = parseInt(minDraft, 10)
+    if (Number.isNaN(n)) n = range[0]
+    n = Math.max(3, Math.min(180, n))
+    const hi = Math.max(n, range[1])
+    setRange([n, hi])
+    setMinDraft(String(n))
+    setMaxDraft(String(hi))
+  }
+  const commitMax = (): void => {
+    let n = parseInt(maxDraft, 10)
+    if (Number.isNaN(n)) n = range[1]
+    n = Math.max(3, Math.min(180, n))
+    const lo = Math.min(n, range[0])
+    setRange([lo, n])
+    setMinDraft(String(lo))
+    setMaxDraft(String(n))
+  }
+  const commitCount = (): void => {
+    let n = parseInt(countDraft, 10)
+    if (Number.isNaN(n)) n = count
+    n = Math.max(1, Math.min(30, n))
+    setCount(n)
+    setCountDraft(String(n))
+  }
+  const blurOnEnter = (e: KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+  }
+
   const chooseFolder = async (): Promise<void> => {
     const picked = await window.clipmaster.selectFolder()
     if (picked) setFolder(picked)
@@ -117,6 +159,7 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
           maxSeconds: range[1],
           count,
           style: shortStyle,
+          aspect,
           backgrounds: cardBackgrounds
         })
       setJobId(ref.job_id)
@@ -264,9 +307,26 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
             {action === 'shorts' && (
               <>
                 <p className="action-lead">
-                  Cut vertical 9:16 shorts from the best moments. Pick a soft length range —
-                  each short is fit within it.
+                  Cut short clips from the best moments. Choose the aspect and template,
+                  then a soft length range — each short is fit within it.
                 </p>
+                <div className="field">
+                  <label>Aspect ratio</label>
+                  <div className="preset-row">
+                    <button
+                      className={`preset ${aspect === '9:16' ? 'active' : ''}`}
+                      onClick={() => setAspect('9:16')}
+                    >
+                      9:16 · vertical
+                    </button>
+                    <button
+                      className={`preset ${aspect === '16:9' ? 'active' : ''}`}
+                      onClick={() => setAspect('16:9')}
+                    >
+                      16:9 · horizontal
+                    </button>
+                  </div>
+                </div>
                 <div className="field">
                   <label>Template</label>
                   <div className="preset-row">
@@ -274,7 +334,7 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
                       className={`preset ${shortStyle === 'card' ? 'active' : ''}`}
                       onClick={() => setShortStyle('card')}
                     >
-                      Card · rounded 1:1
+                      Card · rounded
                     </button>
                     <button
                       className={`preset ${shortStyle === 'fit' ? 'active' : ''}`}
@@ -320,7 +380,11 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
                       <button
                         key={p.label}
                         className={`preset ${active ? 'active' : ''}`}
-                        onClick={() => setRange([p.min, p.max])}
+                        onClick={() => {
+                          setRange([p.min, p.max])
+                          setMinDraft(String(p.min))
+                          setMaxDraft(String(p.max))
+                        }}
                       >
                         {p.label}
                       </button>
@@ -332,34 +396,39 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
                     <label>Min seconds</label>
                     <input
                       type="number"
+                      inputMode="numeric"
                       min={3}
-                      max={range[1]}
-                      value={range[0]}
-                      onChange={(e) =>
-                        setRange([Math.min(Number(e.target.value), range[1]), range[1]])
-                      }
+                      max={180}
+                      value={minDraft}
+                      onChange={(e) => setMinDraft(e.target.value)}
+                      onBlur={commitMin}
+                      onKeyDown={blurOnEnter}
                     />
                   </div>
                   <div className="field">
                     <label>Max seconds</label>
                     <input
                       type="number"
-                      min={range[0]}
+                      inputMode="numeric"
+                      min={3}
                       max={180}
-                      value={range[1]}
-                      onChange={(e) =>
-                        setRange([range[0], Math.max(Number(e.target.value), range[0])])
-                      }
+                      value={maxDraft}
+                      onChange={(e) => setMaxDraft(e.target.value)}
+                      onBlur={commitMax}
+                      onKeyDown={blurOnEnter}
                     />
                   </div>
                   <div className="field">
                     <label>How many</label>
                     <input
                       type="number"
+                      inputMode="numeric"
                       min={1}
                       max={30}
-                      value={count}
-                      onChange={(e) => setCount(Math.max(1, Math.min(30, Number(e.target.value))))}
+                      value={countDraft}
+                      onChange={(e) => setCountDraft(e.target.value)}
+                      onBlur={commitCount}
+                      onKeyDown={blurOnEnter}
                     />
                   </div>
                 </div>
