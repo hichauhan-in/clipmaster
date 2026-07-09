@@ -93,7 +93,9 @@ export const client = {
         min_seconds: opts.minSeconds,
         max_seconds: opts.maxSeconds,
         count: opts.count ?? null,
-        output_dir: opts.outputDir ?? null
+        output_dir: opts.outputDir ?? null,
+        style: opts.style ?? 'card',
+        backgrounds: opts.backgrounds ?? ['blur']
       })
     }),
 

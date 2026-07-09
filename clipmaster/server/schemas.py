@@ -72,6 +72,15 @@ class ShortsRequest(BaseModel):
     output_dir: str | None = Field(
         None, description="Folder to write the shorts into. Omit for the project folder."
     )
+    style: str = Field(
+        "card",
+        pattern="^(fit|card)$",
+        description="'card' = rounded 1:1 card on a canvas; 'fit' = letterbox over blur.",
+    )
+    backgrounds: list[str] = Field(
+        default_factory=lambda: ["blur"],
+        description="Card backgrounds to render: any of 'blur' and 'black' (card style only).",
+    )
 
 
 class JobStatus(BaseModel):

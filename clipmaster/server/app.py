@@ -516,6 +516,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 max_seconds=req.max_seconds,
                 count=req.count,
                 output_dir=out_dir,
+                style=req.style,
+                card_backgrounds=req.backgrounds,
                 bus=bus,
             )
             return _action_done("shorts", result.output_dir, result.files, result.message)

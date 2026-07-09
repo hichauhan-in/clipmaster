@@ -194,6 +194,13 @@ class RenderConfig(BaseModel):
     shorts_height: int = 1920
     shorts_blur_background: bool = True
 
+    # "Card" shorts template: the source sits as a rounded 1:1 card centred on
+    # the vertical canvas over a blurred or solid-black background, leaving a
+    # visible margin all around. Sizes are pixels of the 1080-wide canvas.
+    shorts_card_radius: int = 48        # corner radius of the card
+    shorts_card_border: int = 6         # white ring around the card (black bg only)
+    shorts_card_side_margin: int = 64   # gap left/right of the card
+
     # Cleanup smoothing. Very short gaps between kept spans read as natural pauses
     # (the presenter catching up, or something happening on screen), so they are
     # kept rather than cut. Larger removed gaps get a short fade so the join feels

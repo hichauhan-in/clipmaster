@@ -107,9 +107,18 @@ def build_shorts(
     max_seconds: float,
     count: int | None = None,
     output_dir: Path,
+    style: str = "fit",
+    card_backgrounds: list[str] | None = None,
     bus: EventBus | None = None,
 ) -> ShortsResult:
-    """Render up to ``count`` vertical shorts into ``output_dir``."""
+    """Render up to ``count`` vertical shorts into ``output_dir``.
+
+    ``style`` is ``"fit"`` (letterbox over a blurred fill) or ``"card"`` (a
+    rounded 1:1 card centred on the canvas). ``card_backgrounds`` selects one or
+    both card backgrounds — ``"blur"`` and/or ``"black"`` — and only applies to
+    the card style; when both are given, every moment is rendered once per
+    background.
+    """
     bus = bus or EventBus()
     source = Path(report.source_path)
     if not source.is_file():
@@ -118,6 +127,11 @@ def build_shorts(
             "Move it back or re-run the analysis to make shorts."
         )
 
+    style = style if style in ("fit", "card") else "fit"
+    # Keep a stable blur→black order and drop anything unrecognised; fall back to
+    # a single blurred card when nothing valid was requested.
+    wanted = set(card_backgrounds or [])
+    backgrounds = [b for b in ("blur", "black") if b in wanted] or ["blur"]
     min_s = max(3.0, min(min_seconds, max_seconds))
     max_s = max(min_s, min(max_seconds, 180.0))
     target = count or settings.clips.target_count
@@ -125,37 +139,58 @@ def build_shorts(
     if not specs:
         raise ValueError("Could not find any moment to turn into a short.")
 
+    # The card style can emit one variant per selected background; "fit" ignores
+    # the background entirely and renders a single variant.
+    variants = backgrounds if style == "card" else ["fit"]
+    label_suffix = len(variants) > 1
+
     output_dir.mkdir(parents=True, exist_ok=True)
+    total_renders = len(specs) * len(variants)
     bus.stage_start(
-        Stage.CLIPS, f"Rendering {len(specs)} short(s) ({min_s:.0f}–{max_s:.0f}s)…", count=len(specs)
+        Stage.CLIPS,
+        f"Rendering {total_renders} short(s) ({min_s:.0f}–{max_s:.0f}s)…",
+        count=total_renders,
     )
 
     has_audio = report.media.has_audio
     files: list[Path] = []
-    n = len(specs)
     for i, spec in enumerate(specs):
-        dest = output_dir / f"short-{i + 1:02d}-{slugify(spec.title, fallback='clip')}.mp4"
+        base = f"short-{i + 1:02d}-{slugify(spec.title, fallback='clip')}"
+        for j, variant in enumerate(variants):
+            suffix = f"-{variant}" if label_suffix else ""
+            dest = output_dir / f"{base}{suffix}.mp4"
+            step = i * len(variants) + j
 
-        def _on_progress(fraction: float, _i: int = i) -> None:
-            bus.progress(
-                Stage.CLIPS,
-                (_i + fraction) / n,
-                f"Short {_i + 1}/{n} · {spec.title}",
+            def _on_progress(fraction: float, _step: int = step) -> None:
+                bus.progress(
+                    Stage.CLIPS,
+                    (_step + fraction) / total_renders,
+                    f"Short {_step + 1}/{total_renders} · {spec.title}",
+                )
+
+            render_vertical_short(
+                source,
+                spec.start,
+                spec.end,
+                dest,
+                has_audio=has_audio,
+                render=settings.render,
+                ffmpeg_bin=settings.media.ffmpeg_bin,
+                on_progress=_on_progress,
+                style=style,
+                card_background=variant if style == "card" else "blur",
             )
+            files.append(dest)
+            logger.info("Rendered short %s (%.1fs)", dest.name, spec.duration)
 
-        render_vertical_short(
-            source,
-            spec.start,
-            spec.end,
-            dest,
-            has_audio=has_audio,
-            render=settings.render,
-            ffmpeg_bin=settings.media.ffmpeg_bin,
-            on_progress=_on_progress,
+    if style == "card":
+        names = {"blur": "blurred", "black": "black"}
+        bg = " and ".join(names[b] for b in backgrounds)
+        message = (
+            f"Rendered {len(files)} short(s), {min_s:.0f}–{max_s:.0f}s each, "
+            f"as 9:16 cards on a {bg} background."
         )
-        files.append(dest)
-        logger.info("Rendered short %s (%.1fs)", dest.name, spec.duration)
-
-    message = f"Rendered {len(files)} short(s), {min_s:.0f}–{max_s:.0f}s each, as 9:16 video."
+    else:
+        message = f"Rendered {len(files)} short(s), {min_s:.0f}–{max_s:.0f}s each, as 9:16 video."
     bus.stage_end(Stage.CLIPS, message)
     return ShortsResult(output_dir=output_dir, files=files, message=message)

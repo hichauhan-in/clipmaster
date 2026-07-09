@@ -36,6 +36,10 @@ export interface ShortsOptions {
   maxSeconds: number
   count?: number | null
   outputDir?: string | null
+  /** 'card' = rounded 1:1 card on a canvas; 'fit' = letterbox over blur. */
+  style?: 'card' | 'fit'
+  /** Card backgrounds to render (card style only): 'blur' and/or 'black'. */
+  backgrounds?: ('blur' | 'black')[]
 }
 
 export interface VideoStreamInfo {

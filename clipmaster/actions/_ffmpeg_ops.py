@@ -181,6 +181,77 @@ def _vertical_graph(render: RenderConfig) -> str:
     )
 
 
+def _round_alpha_expr(radius: int) -> str:
+    """A ``geq`` alpha expression that is opaque except outside the four rounded
+    corners of the layer it is applied to (uses the layer's own W/H)."""
+    r = max(0, int(radius))
+    return (
+        f"if(gt(abs(X-(W-1)/2),(W-1)/2-{r})*gt(abs(Y-(H-1)/2),(H-1)/2-{r}),"
+        f"if(lte(hypot(abs(X-(W-1)/2)-((W-1)/2-{r}),abs(Y-(H-1)/2)-((H-1)/2-{r})),{r}),255,0),"
+        f"255)"
+    )
+
+
+def _rounded_card_chain(label_in: str, wc: int, hc: int, radius: int, label_out: str) -> str:
+    """Centre-crop ``label_in`` to a square, scale to ``wc``×``hc`` and round the
+    corners, producing ``label_out`` (a yuva420p layer with a rounded alpha)."""
+    return (
+        f"[{label_in}]crop='min(iw,ih)':'min(iw,ih)',scale={wc}:{hc},setsar=1,"
+        f"format=yuva420p,"
+        f"geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='{_round_alpha_expr(radius)}'[{label_out}]"
+    )
+
+
+def _card_graph(render: RenderConfig, *, duration: float, background: str) -> str:
+    """Vertical short with the source as a rounded **1:1 card** centred on the
+    canvas, leaving a visible margin all around.
+
+    ``background`` is either ``"blur"`` — a zoomed, blurred copy of the same
+    frame behind the card — or ``"black"`` — a solid-black canvas with a thin
+    white border ring tracing the rounded card.
+    """
+    w, h = render.shorts_width, render.shorts_height
+    sm = max(0, int(render.shorts_card_side_margin))
+    wc = (w - 2 * sm)
+    wc -= wc % 2
+    wc = max(2, wc)
+    hc = wc  # 1:1 card
+    r = max(0, min(int(render.shorts_card_radius), wc // 2, hc // 2))
+    vx = (w - wc) // 2
+    oy = (h - hc) // 2  # centred vertically → equal top/bottom margins
+
+    if background == "black":
+        b = max(0, int(render.shorts_card_border))
+        dur_s = f"{max(0.1, duration):.3f}"
+        fg = _rounded_card_chain("0:v", wc, hc, r, "fg")
+        if b > 0:
+            wbc, hbc = wc + 2 * b, hc + 2 * b
+            return (
+                f"{fg};"
+                f"color=c=black:s={w}x{h}:d={dur_s}[bg];"
+                f"color=c=white:s={wbc}x{hbc}:d={dur_s},format=yuva420p,"
+                f"geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':"
+                f"a='{_round_alpha_expr(r + b)}'[bd];"
+                f"[bg][bd]overlay={vx - b}:{oy - b}[bg2];"
+                f"[bg2][fg]overlay={vx}:{oy},setsar=1[outv]"
+            )
+        return (
+            f"{fg};"
+            f"color=c=black:s={w}x{h}:d={dur_s}[bg];"
+            f"[bg][fg]overlay={vx}:{oy},setsar=1[outv]"
+        )
+
+    # Blurred background (default): a zoom-filled, blurred copy of the frame.
+    fg = _rounded_card_chain("src", wc, hc, r, "fg")
+    return (
+        f"[0:v]split=2[src][bgsrc];"
+        f"[bgsrc]scale={w}:{h}:force_original_aspect_ratio=increase,"
+        f"crop={w}:{h},boxblur=20:2[bg];"
+        f"{fg};"
+        f"[bg][fg]overlay={vx}:{oy},setsar=1[outv]"
+    )
+
+
 def render_vertical_short(
     source: Path,
     start: float,
@@ -191,15 +262,26 @@ def render_vertical_short(
     render: RenderConfig,
     ffmpeg_bin: str = "ffmpeg",
     on_progress: ProgressFn | None = None,
+    style: str = "fit",
+    card_background: str = "blur",
 ) -> Path:
     """Render ``[start, end]`` of ``source`` as a vertical 9:16 short into ``dest``.
 
-    The source frame is letterboxed (never cropped) over a blurred fill of itself
-    — the familiar reel look — so slides, code and diagrams stay fully visible.
+    ``style`` selects the framing:
+
+    * ``"fit"`` (default) — the whole frame is letterboxed (never cropped) over a
+      blurred fill of itself, the familiar reel look, so slides/code/diagrams stay
+      fully visible.
+    * ``"card"`` — the frame sits as a rounded **1:1 card** centred on the canvas
+      with a visible margin, over a blurred (``card_background="blur"``) or solid
+      black (``"black"``) background.
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     duration = max(0.1, end - start)
-    graph = _vertical_graph(render)
+    if style == "card":
+        graph = _card_graph(render, duration=duration, background=card_background)
+    else:
+        graph = _vertical_graph(render)
 
     args = [
         "-ss",

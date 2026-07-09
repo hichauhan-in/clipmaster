@@ -35,6 +35,11 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
   const [folder, setFolder] = useState<string | null>(null)
   const [range, setRange] = useState<[number, number]>([15, 30])
   const [count, setCount] = useState(6)
+  // Shorts framing: rounded 1:1 "card" (over blur/black) or letterboxed "fit".
+  const [shortStyle, setShortStyle] = useState<'card' | 'fit'>('card')
+  // Card backgrounds are independent toggles — pick blurred, black, or both.
+  const [wantBlur, setWantBlur] = useState(true)
+  const [wantBlack, setWantBlack] = useState(false)
   // Notes & summary: choose notes, transcript, or both.
   const [wantNotes, setWantNotes] = useState(true)
   const [wantTranscript, setWantTranscript] = useState(false)
@@ -49,6 +54,9 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
     setFolder(null)
     setRange([15, 30])
     setCount(6)
+    setShortStyle('card')
+    setWantBlur(true)
+    setWantBlack(false)
     setWantNotes(true)
     setWantTranscript(false)
     setTranscriptTimestamps(true)
@@ -80,6 +88,11 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
         ? 'Export transcript'
         : 'Generate notes'
 
+  // Card backgrounds selected as an ordered list (blur first) for the request.
+  const cardBackgrounds: ('blur' | 'black')[] = []
+  if (wantBlur) cardBackgrounds.push('blur')
+  if (wantBlack) cardBackgrounds.push('black')
+
   const chooseFolder = async (): Promise<void> => {
     const picked = await window.clipmaster.selectFolder()
     if (picked) setFolder(picked)
@@ -102,7 +115,9 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
         ref = await client.makeShorts(report.project_id, {
           minSeconds: range[0],
           maxSeconds: range[1],
-          count
+          count,
+          style: shortStyle,
+          backgrounds: cardBackgrounds
         })
       setJobId(ref.job_id)
     } catch (e) {
@@ -252,6 +267,52 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
                   Cut vertical 9:16 shorts from the best moments. Pick a soft length range —
                   each short is fit within it.
                 </p>
+                <div className="field">
+                  <label>Template</label>
+                  <div className="preset-row">
+                    <button
+                      className={`preset ${shortStyle === 'card' ? 'active' : ''}`}
+                      onClick={() => setShortStyle('card')}
+                    >
+                      Card · rounded 1:1
+                    </button>
+                    <button
+                      className={`preset ${shortStyle === 'fit' ? 'active' : ''}`}
+                      onClick={() => setShortStyle('fit')}
+                    >
+                      Fit · full frame
+                    </button>
+                  </div>
+                </div>
+                {shortStyle === 'card' && (
+                  <div className="field">
+                    <label>Card background</label>
+                    <div className="preset-row">
+                      <button
+                        className={`preset ${wantBlur ? 'active' : ''}`}
+                        onClick={() => setWantBlur((v) => !v)}
+                      >
+                        Blurred
+                      </button>
+                      <button
+                        className={`preset ${wantBlack ? 'active' : ''}`}
+                        onClick={() => setWantBlack((v) => !v)}
+                      >
+                        Black
+                      </button>
+                    </div>
+                    {cardBackgrounds.length === 0 && (
+                      <div className="banner warn" style={{ marginTop: 4 }}>
+                        Pick at least one background to continue.
+                      </div>
+                    )}
+                    {cardBackgrounds.length === 2 && (
+                      <p className="field-hint">
+                        Each moment is rendered twice — one blurred and one black.
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div className="preset-row">
                   {SHORT_PRESETS.map((p) => {
                     const active = range[0] === p.min && range[1] === p.max
@@ -315,7 +376,8 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
                 disabled={
                   starting ||
                   (action === 'cleanup' && report.cleanup_keep_spans.length === 0) ||
-                  (action === 'notes' && !wantNotes && !wantTranscript)
+                  (action === 'notes' && !wantNotes && !wantTranscript) ||
+                  (action === 'shorts' && shortStyle === 'card' && cardBackgrounds.length === 0)
                 }
               >
                 {starting ? 'Starting…' : action === 'notes' ? notesVerb : meta.verb}

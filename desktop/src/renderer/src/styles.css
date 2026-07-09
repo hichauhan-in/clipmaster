@@ -1397,6 +1397,11 @@ button.ghost:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--text);
 }
+.field-hint {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
 
 /* Cleanup stats */
 .stat-row {
