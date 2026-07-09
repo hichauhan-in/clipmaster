@@ -124,6 +124,23 @@ analysis:
     - "sign up for my"
     - "join my discord"
     - "join my channel"
+    # Outro / playlist / next-video plugs (the wrap-up self-promotion at the end).
+    - "consider subscribing"
+    - "in my playlist"
+    - "on my playlist"
+    - "my playlist"
+    - "in the playlist"
+    - "associated lessons"
+    - "related lessons"
+    - "check out my other"
+    - "my other videos"
+    - "my other tutorials"
+    - "rest of the series"
+    - "thanks for watching"
+    - "thank you for watching"
+    - "see you in the next"
+    - "see you next time"
+    - "catch you in the next"
 
   # Multi-factor scoring. The transcript is the primary signal (~60%), complemented
   # by audio delivery and on-screen visual content. Weights are relative and are

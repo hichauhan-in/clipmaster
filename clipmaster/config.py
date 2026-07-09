@@ -120,6 +120,24 @@ class AnalysisConfig(BaseModel):
             "sign up for my",
             "join my discord",
             "join my channel",
+            # Outro / playlist / next-video plugs — the wrap-up "that's it for the
+            # video, check out the rest in my playlist" self-promotion at the end.
+            "consider subscribing",
+            "in my playlist",
+            "on my playlist",
+            "my playlist",
+            "in the playlist",
+            "associated lessons",
+            "related lessons",
+            "check out my other",
+            "my other videos",
+            "my other tutorials",
+            "rest of the series",
+            "thanks for watching",
+            "thank you for watching",
+            "see you in the next",
+            "see you next time",
+            "catch you in the next",
         ]
     )
 

@@ -58,6 +58,51 @@ def _reflow(segments: list[TranscriptSegment], *, sentences_per_para: int = 5) -
     return paras or ([text] if text else [])
 
 
+def _paragraphs(
+    segments: list[TranscriptSegment],
+    *,
+    sentences_per_para: int = 4,
+    max_chars: int = 420,
+) -> list[tuple[float, str]]:
+    """Group consecutive segments into paragraphs, keeping each one's start time.
+
+    Whisper emits many short segments; rendering one timestamped line each makes
+    the transcript a wall of stamps. Here we coalesce them into paragraphs (a few
+    sentences, or once they grow long) so the output reads naturally while still
+    carrying a single ``[mm:ss]`` marker per paragraph.
+    """
+    paras: list[tuple[float, str]] = []
+    cur: list[str] = []
+    start: float | None = None
+    sentence_count = 0
+    cur_len = 0
+    for seg in segments:
+        txt = seg.text.strip()
+        if not txt:
+            continue
+        if start is None:
+            start = seg.start
+        cur.append(txt)
+        cur_len += len(txt) + 1
+        sentence_count += len(re.findall(r"[.!?]", txt))
+        if sentence_count >= sentences_per_para or cur_len >= max_chars:
+            paras.append((start, " ".join(cur).strip()))
+            cur, start, sentence_count, cur_len = [], None, 0, 0
+    if cur and start is not None:
+        paras.append((start, " ".join(cur).strip()))
+    return paras
+
+
+def _plain_text(report: AnalysisReport) -> str:
+    """Render the whole transcript as blank-line separated paragraphs (no stamps)."""
+    segs = [s for s in report.transcript.segments if s.text.strip()]
+    paras = _reflow(segs) if segs else []
+    if not paras:
+        fallback = report.transcript.full_text.strip()
+        paras = [fallback] if fallback else []
+    return "\n\n".join(p for p in paras if p) + "\n"
+
+
 def _render_markdown(report: AnalysisReport, *, include_timestamps: bool) -> str:
     stem = Path(report.source_path).stem or "Transcript"
     lines = [f"# Transcript — {stem}", ""]
@@ -86,13 +131,11 @@ def _render_markdown(report: AnalysisReport, *, include_timestamps: bool) -> str
             continue
         if len(chapters) > 1 or chapter.title != stem:
             lines += [f"## {chapter.title}", ""]
-        if include_timestamps:
-            for seg in segs:
-                lines.append(f"`[{_fmt_ts(seg.start)}]` {seg.text.strip()}")
-            lines.append("")
-        else:
-            for para in _reflow(segs):
-                lines += [para, ""]
+        for start, text in _paragraphs(segs):
+            if include_timestamps:
+                lines += [f"`[{_fmt_ts(start)}]` {text}", ""]
+            else:
+                lines += [text, ""]
 
     while lines and lines[-1] == "":
         lines.pop()
@@ -125,7 +168,7 @@ def build_transcript(
     bus.progress(Stage.NOTES, 0.5, "Wrote transcript.md")
 
     txt_path = output_dir / "transcript.txt"
-    txt_path.write_text(report.transcript.full_text + "\n", encoding="utf-8")
+    txt_path.write_text(_plain_text(report), encoding="utf-8")
     bus.progress(Stage.NOTES, 1.0, "Wrote transcript.txt")
 
     files = [md_path, txt_path]

@@ -49,7 +49,7 @@ export function ResultsView({ report, workspace, onNotify }: Props): JSX.Element
         <h3>What would you like to do?</h3>
         <div className="actionbar">
           <button className="action" onClick={() => setAction('notes')}>
-            <div className="t">Notes &amp; summary</div>
+            <div className="t">Notes &amp; transcript</div>
             <div className="d">Study notes with diagrams, or export the raw transcript.</div>
           </button>
           <button className="action" onClick={() => setAction('cleanup')}>

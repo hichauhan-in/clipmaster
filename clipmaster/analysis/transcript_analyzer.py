@@ -45,6 +45,23 @@ _WORD_RE = re.compile(r"[a-z']+")
 # applies the final duration/count selection from the clips config.
 _MAX_CLIP_CANDIDATES = 12
 
+# Sign-off / outro cues. When one of these appears in the latter part of a video
+# ("that's it for this video", "thanks for watching", "see you in the next one"),
+# everything from there to the end is the outro — typically a playlist / subscribe
+# / course self-promotion wrap-up — and is dropped from the cleaned cut.
+_SIGN_OFF_RE = re.compile(
+    r"(that'?s it for (this|the|today'?s|our|my)?\s*(video|lesson|tutorial|session|episode|one)"
+    r"|that'?s all (for (this|today|now)|i have|for me)"
+    r"|thank(s| you)( so much| very much)? for watching"
+    r"|that (wraps|brings) (up|it up|things up|us to the end)"
+    r"|that (concludes|is the end of|is it for)"
+    r"|we'?ve (come to|reached) the end"
+    r"|see you (in the next|next time|guys)"
+    r"|catch you (in the next|next time|later)"
+    r"|(until|till) (next time|the next (one|video|lesson)))",
+    re.IGNORECASE,
+)
+
 _SYSTEM_PROMPT = (
     "You are an expert video editor and content analyst. You analyse the "
     "transcript of an educational/work video and return STRICT JSON only. "
@@ -161,8 +178,12 @@ def _window_prompt(segments: list[TranscriptSegment]) -> str:
         "advertising that is NOT part of the educational content — e.g. plugging "
         "the author's own courses/products/services, sponsor reads, asking viewers "
         "to like/subscribe/follow, discount or coupon codes, 'link in the "
-        "description/bio', merch or Patreon shout-outs. These often appear at the "
-        "very start or end. Mark them even if a slide is shown on screen. clips "
+        "description/bio', merch or Patreon shout-outs, and end-of-video wrap-ups "
+        "like 'that's it for this video', 'check out my other videos / playlist', "
+        "'see you in the next one'. Once the creator begins signing off near the "
+        "end, mark the ENTIRE remainder through the last timestamp as promo. These "
+        "often appear at the very start or end. Mark them even if a slide is shown "
+        "on screen. clips "
         "are self-contained highlights 8-40s long with score 0..1. Use only "
         "timestamps within the given range."
     )
@@ -403,6 +424,20 @@ class TranscriptAnalyzer:
         informative_kinds = set(ac.visual_informative_kinds)
         floor = ac.visual_floor_importance
         promo_phrases = [p.lower() for p in ac.promo_phrases] if ac.remove_promotional else []
+
+        # Sign-off / outro cutoff: once the creator wraps up in the latter part of
+        # the video ("that's it for the video", "thanks for watching"), everything
+        # from there to the end is outro self-promotion (playlist plugs, subscribe
+        # CTAs) and is dropped — even if a slide is still on screen.
+        outro_start: float | None = None
+        if ac.remove_promotional:
+            video_end = max((s.end for s in segments), default=0.0)
+            if video_end > 0:
+                for seg in segments:
+                    if seg.start >= 0.6 * video_end and _SIGN_OFF_RE.search(seg.text):
+                        outro_start = seg.start
+                        break
+
         analyses: list[SegmentAnalysis] = []
         for seg in segments:
             transcript_importance, filler_ratio = heur[seg.id]
@@ -429,6 +464,7 @@ class TranscriptAnalyzer:
             is_promo = ac.remove_promotional and (
                 _in_spans(seg, promo_spans)
                 or _phrase_hit(seg.text, promo_phrases)
+                or (outro_start is not None and seg.start >= outro_start)
             )
             if is_promo:
                 kind = SegmentKind.PROMO

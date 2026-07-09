@@ -96,7 +96,8 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
           transcript: wantTranscript,
           transcriptTimestamps
         })
-      else if (action === 'cleanup') ref = await client.makeCleanup(report.project_id, {})
+      else if (action === 'cleanup')
+        ref = await client.makeCleanup(report.project_id, { outputDir: folder })
       else
         ref = await client.makeShorts(report.project_id, {
           minSeconds: range[0],
@@ -226,6 +227,22 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
                     understanding enabled first.
                   </div>
                 )}
+                <div className="field">
+                  <label>Save to</label>
+                  <div className="folder-pick">
+                    <span className="folder-path mono">
+                      {folder ?? 'Project folder (default)'}
+                    </span>
+                    <button className="ghost" onClick={chooseFolder}>
+                      <FolderIcon size={15} /> Choose…
+                    </button>
+                  </div>
+                  {folder && (
+                    <button className="link-btn" onClick={() => setFolder(null)}>
+                      Reset to project folder
+                    </button>
+                  )}
+                </div>
               </>
             )}
 
