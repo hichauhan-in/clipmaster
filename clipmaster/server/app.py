@@ -451,7 +451,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # --- Post-analysis actions (notes / cleanup / shorts) --------------------
     @app.post("/api/projects/{project_id}/notes", response_model=JobRef)
     def make_notes(project_id: str, req: NotesRequest) -> JobRef:
-        from clipmaster.actions import build_notes
+        from clipmaster.actions import build_notes, build_transcript
+
+        if not req.notes and not req.transcript:
+            raise HTTPException(
+                status_code=400,
+                detail="Choose at least one output: study notes or the transcript.",
+            )
 
         report, project_dir = _load_report(project_id)
         stem = _slugify_stem(report.source_path)
@@ -460,8 +466,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         out_dir = (parent / f"{stem}-notes") if req.output_dir else default
 
         def _work(bus: Any) -> dict[str, Any]:
-            result = build_notes(report, settings, output_dir=out_dir, bus=bus)
-            return _action_done("notes", result.output_dir, result.files, result.message)
+            files: list[Path] = []
+            messages: list[str] = []
+            if req.notes:
+                result = build_notes(report, settings, output_dir=out_dir, bus=bus)
+                files.extend(result.files)
+                messages.append(result.message)
+            if req.transcript:
+                tr = build_transcript(
+                    report,
+                    settings,
+                    output_dir=out_dir,
+                    bus=bus,
+                    include_timestamps=req.transcript_timestamps,
+                )
+                files.extend(tr.files)
+                messages.append(tr.message)
+            return _action_done("notes", out_dir, files, " ".join(messages))
 
         job = manager.start_task("notes", _work)
         return JobRef(job_id=job.id, status=job.status)

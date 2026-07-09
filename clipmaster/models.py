@@ -170,6 +170,7 @@ class SegmentKind(str, Enum):
     OFF_TOPIC = "off_topic"
     QA = "qa"
     FILLER = "filler"
+    PROMO = "promo"  # self-promotion, ads, sponsor reads, subscribe/course CTAs
     INTRO = "intro"
     OUTRO = "outro"
     TRANSITION = "transition"

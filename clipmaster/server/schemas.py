@@ -42,11 +42,16 @@ class JobRef(BaseModel):
 
 # --- Post-analysis actions (notes / cleanup / shorts) ------------------------
 class NotesRequest(BaseModel):
-    """Generate Markdown study notes for a project."""
+    """Generate study notes and/or export the transcript for a project."""
 
     output_dir: str | None = Field(
         None,
-        description="Parent folder to write the notes into. Omit to use the project folder.",
+        description="Parent folder to write the outputs into. Omit to use the project folder.",
+    )
+    notes: bool = Field(True, description="Generate Markdown study notes.")
+    transcript: bool = Field(False, description="Export the verbatim transcript.")
+    transcript_timestamps: bool = Field(
+        True, description="Include [mm:ss] timestamps in the exported transcript."
     )
 
 

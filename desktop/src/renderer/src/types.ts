@@ -19,6 +19,12 @@ export interface AnalyzeOptions {
 /** Options for the post-analysis action endpoints. */
 export interface NotesOptions {
   outputDir?: string | null
+  /** Generate Markdown study notes. */
+  notes?: boolean
+  /** Export the verbatim transcript. */
+  transcript?: boolean
+  /** Include [mm:ss] timestamps in the exported transcript. */
+  transcriptTimestamps?: boolean
 }
 
 export interface CleanupOptions {

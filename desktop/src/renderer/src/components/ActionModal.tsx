@@ -35,6 +35,10 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
   const [folder, setFolder] = useState<string | null>(null)
   const [range, setRange] = useState<[number, number]>([15, 30])
   const [count, setCount] = useState(6)
+  // Notes & summary: choose notes, transcript, or both.
+  const [wantNotes, setWantNotes] = useState(true)
+  const [wantTranscript, setWantTranscript] = useState(false)
+  const [transcriptTimestamps, setTranscriptTimestamps] = useState(true)
 
   const stream = useJobStream(jobId)
 
@@ -45,6 +49,9 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
     setFolder(null)
     setRange([15, 30])
     setCount(6)
+    setWantNotes(true)
+    setWantTranscript(false)
+    setTranscriptTimestamps(true)
   }, [action])
 
   const cleanup = useMemo(() => {
@@ -65,6 +72,14 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
         ? 'running'
         : 'setup'
 
+  // Notes action can produce notes and/or a transcript — label the button for it.
+  const notesVerb =
+    wantNotes && wantTranscript
+      ? 'Generate notes + transcript'
+      : wantTranscript
+        ? 'Export transcript'
+        : 'Generate notes'
+
   const chooseFolder = async (): Promise<void> => {
     const picked = await window.clipmaster.selectFolder()
     if (picked) setFolder(picked)
@@ -74,7 +89,13 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
     setStarting(true)
     try {
       let ref
-      if (action === 'notes') ref = await client.makeNotes(report.project_id, { outputDir: folder })
+      if (action === 'notes')
+        ref = await client.makeNotes(report.project_id, {
+          outputDir: folder,
+          notes: wantNotes,
+          transcript: wantTranscript,
+          transcriptTimestamps
+        })
       else if (action === 'cleanup') ref = await client.makeCleanup(report.project_id, {})
       else
         ref = await client.makeShorts(report.project_id, {
@@ -105,10 +126,59 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
             {action === 'notes' && (
               <>
                 <p className="action-lead">
-                  Write Markdown study notes for{' '}
-                  <strong>{baseName(report.source_path)}</strong> — an index plus one file
-                  per chapter, with key points, subtopics and mermaid diagrams.
+                  Choose what to produce for{' '}
+                  <strong>{baseName(report.source_path)}</strong>. Pick study notes,
+                  the raw transcript, or both.
                 </p>
+                <div className="toggle-list">
+                  <label className={`toggle-card ${wantNotes ? 'on' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={wantNotes}
+                      onChange={(e) => setWantNotes(e.target.checked)}
+                    />
+                    <span className="toggle-body">
+                      <span className="toggle-title">
+                        <NotesIcon size={15} /> Study notes
+                      </span>
+                      <span className="toggle-desc">
+                        Structured Markdown written from the transcript and screenshots —
+                        summaries, key points and mermaid diagrams.
+                      </span>
+                    </span>
+                  </label>
+                  <label className={`toggle-card ${wantTranscript ? 'on' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={wantTranscript}
+                      onChange={(e) => setWantTranscript(e.target.checked)}
+                    />
+                    <span className="toggle-body">
+                      <span className="toggle-title">
+                        <NotesIcon size={15} /> Transcript
+                      </span>
+                      <span className="toggle-desc">
+                        The verbatim words as <span className="mono">transcript.md</span> and{' '}
+                        <span className="mono">transcript.txt</span> — no rewriting.
+                      </span>
+                      {wantTranscript && (
+                        <label className="sub-toggle">
+                          <input
+                            type="checkbox"
+                            checked={transcriptTimestamps}
+                            onChange={(e) => setTranscriptTimestamps(e.target.checked)}
+                          />
+                          Include timestamps
+                        </label>
+                      )}
+                    </span>
+                  </label>
+                </div>
+                {!wantNotes && !wantTranscript && (
+                  <div className="banner warn" style={{ marginTop: 4 }}>
+                    Select at least one output to continue.
+                  </div>
+                )}
                 <div className="field">
                   <label>Save to</label>
                   <div className="folder-pick">
@@ -132,7 +202,8 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
               <>
                 <p className="action-lead">
                   Render a tighter cut of <strong>{baseName(report.source_path)}</strong>,
-                  removing only silence, filler and off-topic spans. On-screen demos and
+                  removing silence, filler, off-topic asides and self-promotion / ads
+                  (course plugs, sponsor reads, subscribe CTAs). On-screen demos and
                   navigation are always kept.
                 </p>
                 <div className="stat-row">
@@ -224,9 +295,13 @@ export function ActionModal({ action, report, onClose, onNotify }: Props): JSX.E
               <button
                 className="primary"
                 onClick={start}
-                disabled={starting || (action === 'cleanup' && report.cleanup_keep_spans.length === 0)}
+                disabled={
+                  starting ||
+                  (action === 'cleanup' && report.cleanup_keep_spans.length === 0) ||
+                  (action === 'notes' && !wantNotes && !wantTranscript)
+                }
               >
-                {starting ? 'Starting…' : meta.verb}
+                {starting ? 'Starting…' : action === 'notes' ? notesVerb : meta.verb}
               </button>
             </div>
           </div>

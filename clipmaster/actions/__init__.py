@@ -11,6 +11,7 @@ so the CLI, the HTTP server and the desktop app can all render the same status.
 from clipmaster.actions.cleanup import CleanupResult, build_cleanup
 from clipmaster.actions.notes import NotesResult, build_notes
 from clipmaster.actions.shorts import ShortsResult, build_shorts
+from clipmaster.actions.transcript import TranscriptResult, build_transcript
 
 __all__ = [
     "build_cleanup",
@@ -19,4 +20,6 @@ __all__ = [
     "ShortsResult",
     "build_notes",
     "NotesResult",
+    "build_transcript",
+    "TranscriptResult",
 ]

@@ -50,11 +50,11 @@ export function ResultsView({ report, workspace, onNotify }: Props): JSX.Element
         <div className="actionbar">
           <button className="action" onClick={() => setAction('notes')}>
             <div className="t">Notes &amp; summary</div>
-            <div className="d">Study notes as Markdown — topics, subtopics and mermaid diagrams.</div>
+            <div className="d">Study notes with diagrams, or export the raw transcript.</div>
           </button>
           <button className="action" onClick={() => setAction('cleanup')}>
             <div className="t">Clean up</div>
-            <div className="d">Remove silence, filler and off-topic to a trimmed cut.</div>
+            <div className="d">Remove silence, filler, off-topic and ads to a trimmed cut.</div>
           </button>
           <button className="action" onClick={() => setAction('shorts')}>
             <div className="t">Make shorts</div>

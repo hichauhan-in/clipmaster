@@ -1,6 +1,12 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import { spawn, ChildProcessWithoutNullStreams } from 'child_process'
+import { existsSync } from 'fs'
 import { join } from 'path'
+
+// App icon (play-triangle mark). Lives in desktop/build; from the compiled
+// main process at out/main it resolves via ../../build. Used for the dev-mode
+// window/taskbar icon; packaged builds get the baked .exe icon from builder.
+const ICON_PATH = join(__dirname, '../../build/icon.png')
 
 // --- Backend (Python sidecar) configuration ---------------------------------
 // The desktop app talks to the local ClipMaster API. In development you can run
@@ -52,6 +58,7 @@ function createWindow(): void {
     show: false,
     backgroundColor: '#0b0d10',
     title: 'ClipMaster',
+    icon: existsSync(ICON_PATH) ? ICON_PATH : undefined,
     autoHideMenuBar: true,
     // Themed title bar: hide the black OS frame and paint the caption strip in
     // the app's palette, keeping native window controls via the overlay.
@@ -113,6 +120,9 @@ ipcMain.handle('dialog:openFolder', async () => {
 
 // --- Lifecycle ---------------------------------------------------------------
 app.whenReady().then(() => {
+  // Match the appId so Windows groups the window under our identity and shows
+  // the app icon on the taskbar instead of the generic Electron icon.
+  if (process.platform === 'win32') app.setAppUserModelId('com.clipmaster.desktop')
   startBackend()
   createWindow()
   app.on('activate', () => {

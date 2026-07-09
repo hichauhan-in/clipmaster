@@ -25,8 +25,11 @@ logger = get_logger("actions.notes")
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 # Mermaid diagram declarations we accept — the first meaningful token of a block
-# must be one of these. Covers the classic diagrams plus the newer ones that suit
-# technical notes (packet layouts, state machines, ER schemas, timelines, …).
+# must be one of these. Deliberately limited to the diagram types that render
+# reliably across common Markdown viewers (GitHub, VS Code, Obsidian). The newer
+# experimental "*-beta" diagrams (packet-beta, block-beta, xychart-beta, …) and a
+# few niche types are excluded because many renderers log a parse error on them,
+# which is exactly the "diagram errors in between" problem we want to avoid.
 _MERMAID_KEYWORDS = (
     "flowchart",
     "graph",
@@ -36,17 +39,20 @@ _MERMAID_KEYWORDS = (
     "classdiagram",
     "erdiagram",
     "mindmap",
+    "timeline",
     "journey",
     "gantt",
-    "timeline",
-    "quadrantchart",
-    "requirementdiagram",
-    "gitgraph",
-    "packet-beta",
-    "block-beta",
-    "xychart-beta",
-    "sankey-beta",
-    "c4context",
+)
+
+# Node-label characters that commonly break unquoted mermaid flowchart labels.
+_RISKY_LABEL_RE = re.compile(r"[()<>#&/:;|]")
+# Fancy unicode dashes/arrows LLMs sometimes emit instead of ASCII.
+_ARROW_FIXUPS = (
+    ("\u2192", "-->"),  # →
+    ("\u21d2", "-->"),  # ⇒
+    ("\u2014", "--"),   # —
+    ("\u2013", "--"),   # –
+    ("\u2212", "-"),    # −
 )
 
 _SYSTEM = (
@@ -56,16 +62,23 @@ _SYSTEM = (
     "not a transcript and not terse fragments. Rules: (1) Write self-contained "
     "prose that teaches the concept; define terms, explain the 'why', and add "
     "brief examples where they help. (2) Where a process, protocol exchange, state "
-    "machine, data structure or packet/byte layout is involved, include one or "
-    "more diagrams and pick the most fitting mermaid type: 'sequenceDiagram' for "
+    "machine, data structure or relationship is involved, include one or more "
+    "diagrams and pick the most fitting mermaid type: 'sequenceDiagram' for "
     "message/handshake exchanges (e.g. a TLS handshake, request/response flows), "
     "'flowchart TD' for processes and decisions, 'stateDiagram-v2' for state "
-    "machines, 'classDiagram' or 'erDiagram' for structures/relationships, and "
-    "'packet-beta' for packet/byte layouts. Every diagram must be valid mermaid. "
-    "(3) Never refer to 'the video', 'the speaker', 'this section/lecture', 'as "
-    "mentioned', or any timestamps — the reader has no access to the source. "
-    "(4) Never invent facts that the transcript does not support. Respond ONLY "
-    "with strict JSON — no prose outside the JSON."
+    "machines, and 'classDiagram' or 'erDiagram' for structures/relationships. "
+    "Prefer sequenceDiagram and flowchart — they are the most reliable. MERMAID "
+    "SYNTAX RULES you MUST follow so diagrams never error: always wrap EVERY node "
+    "label and edge label in double quotes, e.g. `A[\"Client\"] -->|\"ClientHello\"| "
+    "B[\"Server\"]`; use only plain ASCII arrows (`-->`, `->>`, `-->>`, `--x`); "
+    "never put parentheses, slashes, colons, `#`, `&`, `<` or `>` OUTSIDE quotes; "
+    "give every node a short alphanumeric id (letters/digits, no spaces) and never "
+    "use the reserved word `end` as an id; keep each statement on its own line; do "
+    "NOT use experimental diagram types. Every diagram must be COMPLETE and valid "
+    "mermaid. (3) Never refer to 'the video', 'the speaker', 'this section/"
+    "lecture', 'as mentioned', or any timestamps — the reader has no access to the "
+    "source. (4) Never invent facts that the transcript does not support. Respond "
+    "ONLY with strict JSON — no prose outside the JSON."
 )
 
 
@@ -100,6 +113,73 @@ def _chapter_text(report: AnalysisReport, chapter: Chapter, *, limit: int) -> st
     return text[:limit]
 
 
+def _quote_label(inner: str) -> str:
+    """Wrap a mermaid node/edge label in double quotes, escaping inner quotes."""
+    return '"' + inner.replace('"', "'").strip() + '"'
+
+
+def _sanitize_flow_line(line: str) -> str:
+    """Quote risky, unquoted labels in a flowchart/graph line so it won't error.
+
+    Handles the common single-bracket node shapes ``[..]``, ``(..)``, ``{..}`` and
+    pipe edge labels ``|..|``. Labels that already look quoted, or that contain no
+    risky characters, are left untouched. Double-bracket shapes (``[[..]]``,
+    ``((..))``) are guarded against with a negative lookahead.
+    """
+
+    def _repl_bracket(open_ch: str, close_ch: str) -> "re.Pattern[str]":
+        # id/text then a single opening bracket (not doubled), inner without the
+        # SAME bracket kind, then the matching closer.
+        o, c = re.escape(open_ch), re.escape(close_ch)
+        return re.compile(rf"{o}(?!{o})([^{o}{c}\n]+?){c}")
+
+    def _sub(match: "re.Match[str]", open_ch: str, close_ch: str) -> str:
+        inner = match.group(1)
+        stripped = inner.strip()
+        if not stripped or (stripped.startswith('"') and stripped.endswith('"')):
+            return match.group(0)
+        if not _RISKY_LABEL_RE.search(inner):
+            return match.group(0)
+        return f"{open_ch}{_quote_label(inner)}{close_ch}"
+
+    for open_ch, close_ch in (("[", "]"), ("(", ")"), ("{", "}")):
+        pat = _repl_bracket(open_ch, close_ch)
+        line = pat.sub(lambda m, o=open_ch, c=close_ch: _sub(m, o, c), line)
+
+    # Pipe edge labels: A -->|label| B  ->  A -->|"label"| B
+    def _sub_pipe(match: "re.Match[str]") -> str:
+        inner = match.group(1)
+        stripped = inner.strip()
+        if not stripped or (stripped.startswith('"') and stripped.endswith('"')):
+            return match.group(0)
+        if not _RISKY_LABEL_RE.search(inner):
+            return match.group(0)
+        return f"|{_quote_label(inner)}|"
+
+    line = re.sub(r"\|([^|\n]+?)\|", _sub_pipe, line)
+    return line
+
+
+def _sanitize_mermaid(body: str, kind: str) -> str:
+    """Best-effort cleanup so LLM-authored mermaid renders without parse errors."""
+    for bad, good in _ARROW_FIXUPS:
+        body = body.replace(bad, good)
+    # Strip markdown emphasis/backticks that sometimes leak into a diagram.
+    body = body.replace("`", "")
+    lines = body.splitlines()
+    is_flow = kind in ("flowchart", "graph")
+    out: list[str] = []
+    for line in lines:
+        s = line.rstrip()
+        if is_flow and s.strip() and not s.strip().startswith("%%"):
+            first = s.strip().split(None, 1)[0].lower()
+            # Don't touch the declaration/subgraph/style lines.
+            if first not in ("flowchart", "graph", "subgraph", "end", "style", "classdef", "class", "linkstyle", "direction"):
+                s = _sanitize_flow_line(s)
+        out.append(s)
+    return "\n".join(out).strip()
+
+
 def _clean_mermaid(raw: object) -> str:
     if not isinstance(raw, str):
         return ""
@@ -116,7 +196,12 @@ def _clean_mermaid(raw: object) -> str:
         if not s or s.startswith("%%") or s in ("---",) or s.startswith(("title:", "config:")):
             continue
         first = s.split(None, 1)[0].lower()
-        return body if first in _MERMAID_KEYWORDS else ""
+        if first not in _MERMAID_KEYWORDS:
+            return ""
+        cleaned = _sanitize_mermaid(body, first)
+        # Require at least one content line beyond the declaration.
+        content = [ln for ln in cleaned.splitlines() if ln.strip()]
+        return cleaned if len(content) >= 2 else ""
     return ""
 
 
@@ -156,15 +241,19 @@ def _llm_notes(client: OllamaClient, model: str, title: str, text: str) -> dict:
         "fits: sequenceDiagram for handshakes / protocol message exchanges / "
         "request-response flows, flowchart TD for processes and decisions, "
         "stateDiagram-v2 for state machines, classDiagram or erDiagram for "
-        'structures, packet-beta for packet or byte layouts."\n'
+        "structures. ALWAYS wrap every node and edge label in double quotes and "
+        "use only plain ASCII arrows so it never errors, e.g. "
+        '\\"A[\\\\\\"Client\\\\\\"] -->|\\\\\\"ClientHello\\\\\\"| B[\\\\\\"Server\\\\\\"]\\"."\n'
         "    }\n"
         "  ],\n"
         '  "key_takeaways": ["a concise revision point", "..."]\n'
         "}\n\n"
-        "Aim for at least two or three well-developed sections. Include 1-3 "
-        "diagrams whenever a flow, exchange, structure or layout would make the "
-        "topic clearer (use an empty list only if no diagram helps). Do not "
-        "mention the video, the speaker, or any timestamps."
+        "Write in real depth: aim for at least three well-developed sections that "
+        "actually teach the topic (definitions, how it works step by step, why it "
+        "matters, and a concrete example). Include 1-3 diagrams whenever a flow, "
+        "exchange or structure would make the topic clearer (use an empty list "
+        "only if no diagram helps). Do not mention the video, the speaker, or any "
+        "timestamps."
     )
     data = client.chat_json(prompt, system=_SYSTEM, model=model)
     if not isinstance(data, dict):

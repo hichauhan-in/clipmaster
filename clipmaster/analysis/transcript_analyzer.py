@@ -61,6 +61,7 @@ class _WindowResult:
     clips: list[ClipCandidate] = field(default_factory=list)
     off_topic: list[tuple[float, float, str]] = field(default_factory=list)
     qa: list[tuple[float, float, str]] = field(default_factory=list)
+    promo: list[tuple[float, float, str]] = field(default_factory=list)
 
 
 # --- Heuristics --------------------------------------------------------------
@@ -150,13 +151,20 @@ def _window_prompt(segments: list[TranscriptSegment]) -> str:
         '                "summary": str, "keywords": [str]}],\n'
         '  "off_topic_spans": [{"start": float, "end": float, "reason": str}],\n'
         '  "qa_spans": [{"start": float, "end": float, "reason": str}],\n'
+        '  "promo_spans": [{"start": float, "end": float, "reason": str}],\n'
         '  "clips": [{"title": str, "start": float, "end": float,\n'
         '             "hook": str, "score": float, "reason": str}]\n'
         "}\n"
         "Rules: chapters must tile the section without gaps; off_topic_spans are "
         "tangents/asides not core to the topic; qa_spans are audience Q&A not "
-        "essential to the main content; clips are self-contained highlights 8-40s "
-        "long with score 0..1. Use only timestamps within the given range."
+        "essential to the main content; promo_spans are self-promotion or "
+        "advertising that is NOT part of the educational content — e.g. plugging "
+        "the author's own courses/products/services, sponsor reads, asking viewers "
+        "to like/subscribe/follow, discount or coupon codes, 'link in the "
+        "description/bio', merch or Patreon shout-outs. These often appear at the "
+        "very start or end. Mark them even if a slide is shown on screen. clips "
+        "are self-contained highlights 8-40s long with score 0..1. Use only "
+        "timestamps within the given range."
     )
 
 
@@ -227,6 +235,7 @@ def _parse_window_response(data: object) -> _WindowResult:
 
     result.off_topic = _coerce_spans(data.get("off_topic_spans"))
     result.qa = _coerce_spans(data.get("qa_spans"))
+    result.promo = _coerce_spans(data.get("promo_spans"))
     return result
 
 
@@ -302,6 +311,7 @@ class TranscriptAnalyzer:
         keywords: list[str] = []
         off_topic_spans: list[tuple[float, float, str]] = []
         qa_spans: list[tuple[float, float, str]] = []
+        promo_spans: list[tuple[float, float, str]] = []
         summaries: list[str] = []
         for w in windows_out:
             chapters.extend(w.chapters)
@@ -309,6 +319,7 @@ class TranscriptAnalyzer:
             keywords.extend(w.keywords)
             off_topic_spans.extend(w.off_topic)
             qa_spans.extend(w.qa)
+            promo_spans.extend(w.promo)
             if w.summary:
                 summaries.append(w.summary)
 
@@ -325,6 +336,7 @@ class TranscriptAnalyzer:
             heur,
             off_topic_spans,
             qa_spans,
+            promo_spans,
             chapters,
             audio_by_id,
             keyframes,
@@ -379,6 +391,7 @@ class TranscriptAnalyzer:
         heur: dict[int, tuple[float, float]],
         off_topic_spans: list[tuple[float, float, str]],
         qa_spans: list[tuple[float, float, str]],
+        promo_spans: list[tuple[float, float, str]],
         chapters: list[Chapter],
         audio_by_id: dict[int, SegmentAudio],
         keyframes: list[VisualKeyframe],
@@ -389,6 +402,7 @@ class TranscriptAnalyzer:
         threshold = ac.keep_importance_threshold
         informative_kinds = set(ac.visual_informative_kinds)
         floor = ac.visual_floor_importance
+        promo_phrases = [p.lower() for p in ac.promo_phrases] if ac.remove_promotional else []
         analyses: list[SegmentAnalysis] = []
         for seg in segments:
             transcript_importance, filler_ratio = heur[seg.id]
@@ -409,6 +423,18 @@ class TranscriptAnalyzer:
                 transcript_importance = min(transcript_importance, 0.3)
                 reason = reason or "Off-topic aside."
 
+            # Self-promotion / advertising: flagged by the LLM or matched by an
+            # obvious promo phrase. Promo is always dropped and (below) is never
+            # rescued by on-screen value — a course-advert slide is still an advert.
+            is_promo = ac.remove_promotional and (
+                _in_spans(seg, promo_spans)
+                or _phrase_hit(seg.text, promo_phrases)
+            )
+            if is_promo:
+                kind = SegmentKind.PROMO
+                transcript_importance = min(transcript_importance, 0.1)
+                reason = "Self-promotion / advertising, not part of the content."
+
             # Complementary signals.
             audio = audio_by_id.get(seg.id)
             audio_score = audio.energy_score if audio is not None else None
@@ -419,14 +445,15 @@ class TranscriptAnalyzer:
             importance = _fuse(weights, transcript_importance, audio_score, visual_score)
 
             # Visual floor: on-screen teaching content (slides, demos, code, labs,
-            # diagrams) is never dropped just because speech is sparse.
+            # diagrams) is never dropped just because speech is sparse — except for
+            # promotional segments, which stay dropped even with a slide on screen.
             visual_informative = (
                 kf is not None
                 and visual_kind in informative_kinds
                 and visual_score is not None
                 and visual_score >= 0.4
             )
-            if visual_informative:
+            if visual_informative and not is_promo:
                 importance = max(importance, floor)
                 if kind in {SegmentKind.FILLER, SegmentKind.OFF_TOPIC}:
                     kind = SegmentKind.ON_TOPIC
@@ -436,9 +463,12 @@ class TranscriptAnalyzer:
                 )
 
             topic = _chapter_title_at(chapters, seg.start)
-            keep = visual_informative or (
-                importance >= threshold
-                and kind not in {SegmentKind.FILLER, SegmentKind.OFF_TOPIC}
+            keep = (not is_promo) and (
+                (visual_informative)
+                or (
+                    importance >= threshold
+                    and kind not in {SegmentKind.FILLER, SegmentKind.OFF_TOPIC}
+                )
             )
             analyses.append(
                 SegmentAnalysis(
@@ -535,6 +565,14 @@ def _in_spans(seg: TranscriptSegment, spans: list[tuple[float, float, str]]) -> 
     return any(start <= mid <= end for start, end, _ in spans)
 
 
+def _phrase_hit(text: str, phrases: list[str]) -> bool:
+    """True when the segment text contains any promotional phrase (case-insensitive)."""
+    if not phrases:
+        return False
+    low = text.lower()
+    return any(p in low for p in phrases)
+
+
 def _chapter_title_at(chapters: list[Chapter], t: float) -> str | None:
     for ch in chapters:
         if ch.start <= t <= ch.end:
@@ -578,12 +616,47 @@ def _build_keep_spans(
         else:
             spans.append(KeepSpan(start=a.start, end=a.end, reason="kept"))
 
+    # Promotional segments are dropped even if a slide is on screen, so exclude
+    # their time ranges from the visual keep-spans below (a course-advert slide
+    # must not sneak the advert back into the cut).
+    promo_ranges = [
+        (a.start, a.end) for a in analyses if a.kind == SegmentKind.PROMO
+    ]
+
     visual_spans = _visual_keep_spans(
         visual_features, informative_kinds or set(), min_informativeness, visual_pad
     )
+    visual_spans = _subtract_ranges(visual_spans, promo_ranges)
     if not visual_spans:
         return spans
     return _merge_keep_spans(spans + visual_spans, gap_tolerance)
+
+
+def _subtract_ranges(
+    spans: list[KeepSpan], exclude: list[tuple[float, float]]
+) -> list[KeepSpan]:
+    """Remove ``exclude`` intervals from ``spans`` (interval difference)."""
+    if not exclude:
+        return spans
+    cuts = sorted((s, e) for s, e in exclude if e > s)
+    out: list[KeepSpan] = []
+    for span in spans:
+        pieces = [(span.start, span.end)]
+        for cs, ce in cuts:
+            next_pieces: list[tuple[float, float]] = []
+            for ps, pe in pieces:
+                if ce <= ps or cs >= pe:  # no overlap
+                    next_pieces.append((ps, pe))
+                    continue
+                if cs > ps:
+                    next_pieces.append((ps, cs))
+                if ce < pe:
+                    next_pieces.append((ce, pe))
+            pieces = next_pieces
+        for ps, pe in pieces:
+            if pe - ps > 0.2:  # drop slivers
+                out.append(KeepSpan(start=ps, end=pe, reason=span.reason))
+    return out
 
 
 def _visual_keep_spans(

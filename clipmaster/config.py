@@ -75,6 +75,54 @@ class AnalysisConfig(BaseModel):
     filler_words: list[str] = Field(default_factory=list)
     keep_importance_threshold: float = 0.35
 
+    # Self-promotion / advertising removal. Spans the LLM flags as promotional
+    # (course plugs, sponsor reads, "subscribe/like", "link in the description",
+    # merch, discount codes) are dropped from the cleaned cut even when they show
+    # a slide on screen — a course-advert slide is still an advert. The phrase
+    # list is a deterministic fallback so obvious promos are caught without the LLM.
+    remove_promotional: bool = True
+    promo_phrases: list[str] = Field(
+        default_factory=lambda: [
+            # High-precision phrases: kept multi-word on purpose so ordinary
+            # technical terms ("subscribe" to a topic, certificate "enrollment",
+            # SQL "join") do not trip the deterministic filter — the LLM handles
+            # the nuanced cases via promo_spans.
+            "like and subscribe",
+            "please subscribe",
+            "don't forget to subscribe",
+            "subscribe to the channel",
+            "subscribe to my channel",
+            "hit the subscribe",
+            "hit the like",
+            "smash the like",
+            "like the video",
+            "ring the bell",
+            "notification bell",
+            "link in the description",
+            "link in the bio",
+            "link in the comments",
+            "link down below",
+            "check out my course",
+            "check out my courses",
+            "check out our course",
+            "my udemy",
+            "coupon code",
+            "discount code",
+            "promo code",
+            "sponsored by",
+            "this video is sponsored",
+            "today's sponsor",
+            "our sponsor",
+            "buy my",
+            "my patreon",
+            "support me on patreon",
+            "follow me on",
+            "sign up for my",
+            "join my discord",
+            "join my channel",
+        ]
+    )
+
     # Multi-factor analysis: transcript is the primary signal, complemented by
     # audio delivery (loudness/pace) and on-screen visual content.
     weights: SignalWeights = Field(default_factory=SignalWeights)

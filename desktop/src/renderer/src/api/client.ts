@@ -72,7 +72,12 @@ export const client = {
   makeNotes: (id: string, opts: NotesOptions) =>
     api<JobRef>(`/api/projects/${id}/notes`, {
       method: 'POST',
-      body: JSON.stringify({ output_dir: opts.outputDir ?? null })
+      body: JSON.stringify({
+        output_dir: opts.outputDir ?? null,
+        notes: opts.notes ?? true,
+        transcript: opts.transcript ?? false,
+        transcript_timestamps: opts.transcriptTimestamps ?? true
+      })
     }),
 
   makeCleanup: (id: string, opts: CleanupOptions = {}) =>

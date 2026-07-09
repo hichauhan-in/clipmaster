@@ -81,6 +81,50 @@ analysis:
   # in the cleanup edit-decision-list.
   keep_importance_threshold: 0.35
 
+  # Self-promotion / advertising removal. Spans the analysis flags as promotional
+  # (course/product plugs, sponsor reads, like/subscribe/follow CTAs, discount or
+  # coupon codes, "link in the description/bio", merch, Patreon) are cut from the
+  # cleaned video even when a slide is on screen. promo_phrases is a deterministic
+  # fallback so obvious promos are caught without the LLM.
+  remove_promotional: true
+  promo_phrases:
+    # High-precision multi-word phrases so ordinary technical terms ("subscribe"
+    # to a topic, certificate "enrollment", SQL "join") are not misflagged — the
+    # LLM catches the nuanced cases via promo_spans.
+    - "like and subscribe"
+    - "please subscribe"
+    - "don't forget to subscribe"
+    - "subscribe to the channel"
+    - "subscribe to my channel"
+    - "hit the subscribe"
+    - "hit the like"
+    - "smash the like"
+    - "like the video"
+    - "ring the bell"
+    - "notification bell"
+    - "link in the description"
+    - "link in the bio"
+    - "link in the comments"
+    - "link down below"
+    - "check out my course"
+    - "check out my courses"
+    - "check out our course"
+    - "my udemy"
+    - "coupon code"
+    - "discount code"
+    - "promo code"
+    - "sponsored by"
+    - "this video is sponsored"
+    - "today's sponsor"
+    - "our sponsor"
+    - "buy my"
+    - "my patreon"
+    - "support me on patreon"
+    - "follow me on"
+    - "sign up for my"
+    - "join my discord"
+    - "join my channel"
+
   # Multi-factor scoring. The transcript is the primary signal (~60%), complemented
   # by audio delivery and on-screen visual content. Weights are relative and are
   # renormalised when a signal is unavailable.

@@ -83,7 +83,7 @@ def build_cleanup(
 
     bus.stage_start(
         Stage.CLEANUP,
-        f"Removing {removed:.0f}s of silence / off-topic ({pct:.0f}% shorter)…",
+        f"Removing {removed:.0f}s of silence / off-topic / ads ({pct:.0f}% shorter)…",
         spans=len(spans),
     )
 

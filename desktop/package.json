@@ -31,6 +31,7 @@
     "productName": "ClipMaster",
     "files": ["out/**/*"],
     "win": {
+      "icon": "build/icon.ico",
       "target": ["nsis"]
     }
   }
