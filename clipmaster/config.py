@@ -128,6 +128,15 @@ class RenderConfig(BaseModel):
     shorts_height: int = 1920
     shorts_blur_background: bool = True
 
+    # Cleanup smoothing. Very short gaps between kept spans read as natural pauses
+    # (the presenter catching up, or something happening on screen), so they are
+    # kept rather than cut. Larger removed gaps get a short fade so the join feels
+    # intentional instead of a glitch, and the cut opens with a gentle fade-in.
+    cleanup_keep_gap_seconds: float = 1.2      # silences shorter than this are kept
+    cleanup_smooth_cuts: bool = True           # fade across big cuts + fade in the open
+    cleanup_fade_seconds: float = 0.3          # fade duration at a smoothed cut
+    cleanup_fade_min_gap_seconds: float = 5.0  # only fade when at least this was removed
+
 
 class NotesConfig(BaseModel):
     """Study-notes generation defaults."""

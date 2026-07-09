@@ -134,6 +134,12 @@ render:
   shorts_width: 1080
   shorts_height: 1920
   shorts_blur_background: true
+  # Cleanup smoothing: keep tiny silences (natural pauses) and fade across big cuts
+  # so the cleaned cut stays smooth instead of glitching between segments.
+  cleanup_keep_gap_seconds: 1.2      # silences shorter than this are kept, not cut
+  cleanup_smooth_cuts: true          # fade across big removed gaps + fade in the open
+  cleanup_fade_seconds: 0.3          # fade duration at a smoothed cut
+  cleanup_fade_min_gap_seconds: 5.0  # only fade when at least this many seconds were removed
 
 # ------------------------------------------------------------------------------------
 # Study-notes generation (Notes action)

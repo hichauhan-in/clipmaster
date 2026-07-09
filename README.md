@@ -282,6 +282,10 @@ passing **`--config path.yaml`**, or setting `CLIPMASTER_*` env vars.
 | `render`        | `crf`                      | `20`               | H.264 quality for cleanup/shorts (lower = better)   |
 |                 | `shorts_width` / `_height` | `1080` / `1920`    | Vertical 9:16 shorts canvas                         |
 |                 | `shorts_blur_background`   | `true`             | Letterbox over a blurred fill (vs. black bars)      |
+|                 | `cleanup_keep_gap_seconds` | `1.2`              | Silences shorter than this are kept (smoother cut)  |
+|                 | `cleanup_smooth_cuts`      | `true`             | Fade across big cuts + fade in the opening          |
+|                 | `cleanup_fade_seconds`     | `0.3`              | Fade length at a smoothed cut                       |
+|                 | `cleanup_fade_min_gap_seconds` | `5.0`          | Only fade when at least this many seconds were cut  |
 | `notes`         | `chapters_per_file`        | `4`                | Topics grouped per notes file (bigger = fewer files)|
 |                 | `single_file_max_chapters` | `6`                | At/below this, all notes go in one file             |
 
@@ -567,6 +571,9 @@ Built incrementally; each milestone consumes the analysis artifact.
 - [x] **M4 — Cleanup renderer:** turn `cleanup_keep_spans` into a trimmed video
   (remove silence / filler / off-topic) via a single-pass ffmpeg trim/concat,
   streamed with live progress. On-screen demos and navigation are always kept.
+  The cut is **smoothed**: very short silences are left in as natural pauses, the
+  opening fades in, and big removed stretches fade out/in so a jump reads as an
+  intentional transition instead of a glitch.
 - [x] **M5 — Shorts generator:** cut the best `clip_candidates` into vertical
   9:16 shorts fit to a user-chosen soft length range (e.g. 10–30s), letterboxed
   over a blurred fill (the neutral default template; a specific style comes later).
@@ -584,9 +591,12 @@ Built incrementally; each milestone consumes the analysis artifact.
   files (consecutive topics are grouped, so you get a few thousand-line files
   instead of dozens of stubs). The notes are proper prose you can revise from —
   no transcript dumps and no "in the video / at 03:12" references — with
-  **mermaid diagrams** (a programmatic topic mindmap + per-topic LLM diagrams).
-  Written by the local LLM, with a reflowed fallback when Ollama is offline;
-  the user picks the output folder.
+  **mermaid diagrams** the model picks per topic (sequence diagrams for
+  handshakes/protocol flows, flowcharts for processes, state/class/packet
+  diagrams where they fit) plus **illustrative screenshots** pulled from the
+  video's informative frames and copied alongside the notes. Written by the local
+  LLM, with a reflowed fallback when Ollama is offline; the user picks the output
+  folder.
 
 ---
 

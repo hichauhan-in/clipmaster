@@ -84,6 +84,8 @@ def keep_and_concat(
     render: RenderConfig,
     ffmpeg_bin: str = "ffmpeg",
     on_progress: ProgressFn | None = None,
+    fade_seconds: float = 0.0,
+    fade_min_gap: float = 5.0,
 ) -> Path:
     """Re-encode ``source`` keeping only ``spans`` (concatenated) into ``dest``.
 
@@ -92,23 +94,53 @@ def keep_and_concat(
     source keyframe layout. The graph is written to a script file and passed with
     the version-appropriate option (see :func:`_filter_complex_args`) so an
     arbitrary number of spans never hits the OS command-line length limit.
+
+    When ``fade_seconds`` > 0 the cut is smoothed: it fades in on the opening
+    frame, and wherever a large stretch (``fade_min_gap`` seconds or more) was
+    removed between two kept spans it fades the outgoing span down and the
+    incoming span up, so a big jump reads as an intentional transition rather
+    than a glitch.
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     total = sum(max(0.0, e - s) for s, e in spans)
+    n = len(spans)
 
     parts: list[str] = []
     concat_inputs: list[str] = []
     for i, (start, end) in enumerate(spans):
-        parts.append(
-            f"[0:v]trim=start={start:.3f}:end={end:.3f},setpts=PTS-STARTPTS[v{i}];"
-        )
+        dur = max(0.0, end - start)
+        gap_before = start - spans[i - 1][1] if i > 0 else None
+        gap_after = spans[i + 1][0] - end if i < n - 1 else None
+        # Fade in on the very first frame and coming out of a big removed gap;
+        # fade out going into a big removed gap (never at the natural ending).
+        fade_in = fade_seconds > 0 and (i == 0 or (gap_before or 0.0) >= fade_min_gap)
+        fade_out = fade_seconds > 0 and gap_after is not None and gap_after >= fade_min_gap
+        f = min(fade_seconds, dur / 2)
+        if f <= 0.01:
+            fade_in = fade_out = False
+
+        vchain = f"[0:v]trim=start={start:.3f}:end={end:.3f},setpts=PTS-STARTPTS"
+        if fade_in:
+            vchain += f",fade=t=in:st=0:d={f:.3f}"
+        if fade_out:
+            vchain += f",fade=t=out:st={dur - f:.3f}:d={f:.3f}"
+        parts.append(f"{vchain}[v{i}];")
         concat_inputs.append(f"[v{i}]")
+
         if has_audio:
-            parts.append(
-                f"[0:a]atrim=start={start:.3f}:end={end:.3f},asetpts=PTS-STARTPTS[a{i}];"
+            # aresample=async=1 keeps audio locked to the reset timeline so the
+            # cut does not drift out of sync with the video across many joins.
+            achain = (
+                f"[0:a]atrim=start={start:.3f}:end={end:.3f},"
+                "asetpts=PTS-STARTPTS,aresample=async=1"
             )
+            if fade_in:
+                achain += f",afade=t=in:st=0:d={f:.3f}"
+            if fade_out:
+                achain += f",afade=t=out:st={dur - f:.3f}:d={f:.3f}"
+            parts.append(f"{achain}[a{i}];")
             concat_inputs.append(f"[a{i}]")
-    n = len(spans)
+
     if has_audio:
         parts.append("".join(concat_inputs) + f"concat=n={n}:v=1:a=1[outv][outa]")
     else:

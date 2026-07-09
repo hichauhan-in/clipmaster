@@ -60,7 +60,10 @@ def build_cleanup(
         )
 
     raw_spans = [(s.start, s.end) for s in report.cleanup_keep_spans]
-    spans = _merge_spans([(s, e) for s, e in raw_spans if e > s])
+    # Keep short silences between spans (natural pauses / the presenter catching up
+    # or something happening on screen): bridging them makes the cut feel smooth.
+    keep_gap = max(0.4, settings.render.cleanup_keep_gap_seconds)
+    spans = _merge_spans([(s, e) for s, e in raw_spans if e > s], gap_tolerance=keep_gap)
     if not spans:
         raise ValueError(
             "This project has no cleanup plan — re-run the analysis with content "
@@ -88,6 +91,7 @@ def build_cleanup(
         bus.progress(Stage.CLEANUP, fraction, "Rendering the cleaned cut…")
 
     has_audio = report.media.has_audio
+    fade_seconds = settings.render.cleanup_fade_seconds if settings.render.cleanup_smooth_cuts else 0.0
     keep_and_concat(
         source,
         spans,
@@ -96,6 +100,8 @@ def build_cleanup(
         render=settings.render,
         ffmpeg_bin=settings.media.ffmpeg_bin,
         on_progress=_on_progress,
+        fade_seconds=fade_seconds,
+        fade_min_gap=settings.render.cleanup_fade_min_gap_seconds,
     )
 
     message = (
