@@ -133,14 +133,14 @@ code,
 
 /* Themed custom title bar (Window Controls Overlay) so the top of the window
    matches the app palette instead of the black OS frame. Height must equal the
-   `titleBarOverlay.height` set in the main process (40). */
+   `titleBarOverlay.height` set in the main process (32). */
 .titlebar {
   flex-shrink: 0;
-  height: 40px;
+  height: 32px;
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 0 14px;
+  gap: 8px;
+  padding: 0 12px;
   background: var(--bg-elev);
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
@@ -163,10 +163,10 @@ code,
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  transition: grid-template-columns 0.18s ease;
+  transition: grid-template-columns 0.26s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .app.sidebar-collapsed {
-  grid-template-columns: 54px 1fr;
+  grid-template-columns: 48px 1fr;
 }
 
 .sidebar {
@@ -205,11 +205,22 @@ code,
   color: var(--text);
 }
 
-/* Collapsed: show only the toggle (top) and the settings gear (bottom). */
+/* Collapsed: fade the expanded content out (instead of display:none) so the
+   collapse/expand animation stays smooth, leaving just the toggle (top) and the
+   settings gear (bottom). */
+.sidebar .nav,
+.sidebar .section-label,
+.sidebar .project-list {
+  transition: opacity 0.14s ease;
+}
 .sidebar.collapsed .nav,
 .sidebar.collapsed .section-label,
 .sidebar.collapsed .project-list {
-  display: none;
+  opacity: 0;
+  pointer-events: none;
+}
+.sidebar.collapsed .project-list {
+  overflow: hidden;
 }
 .sidebar.collapsed .sidebar-head {
   justify-content: center;
@@ -231,6 +242,7 @@ code,
   align-items: center;
   gap: 8px;
   text-align: left;
+  white-space: nowrap;
   background: transparent;
   border: none;
   padding: 8px 10px;
